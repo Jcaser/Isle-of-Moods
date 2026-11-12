@@ -166,7 +166,7 @@ VITE_LLM_API_KEY=
 ```
 serene-isle/
 ├─ public/
-│  ├─ brand/                 # 抠图后的品牌图标（1024/512/256/128/64 + favicon + 圆形头像）
+│  ├─ brand/                 # 抠图后的品牌图标（512/256/128/64 + favicon + 圆形头像）
 │  └─ _redirects             # Netlify SPA 兜底
 ├─ scripts/
 │  ├─ cutout.py              # 图标抠图脚本（容差洪泛 + 最大连通域 + 形态学腐蚀）
@@ -178,7 +178,9 @@ serene-isle/
 │  ├─ store/useAppStore.ts   # Zustand 单一状态源
 │  ├─ index.css              # 设计令牌与组件层
 │  └─ main.tsx               # 路由与全局弹层
-├─ docs/screenshots/
+├─ docs/
+│  ├─ brand/icon-1024.png    # 图标原尺寸（用于文档/视频，不打入产物）
+│  └─ screenshots/
 ├─ .env.example
 └─ vite.config.ts
 ```
