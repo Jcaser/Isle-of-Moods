@@ -371,7 +371,7 @@ export function IslandAtlas() {
   })
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[1.52fr_1fr]">
+    <div id="atlas" className="grid scroll-mt-24 items-start gap-4 lg:grid-cols-[1.52fr_1fr]">
       {/* ── 地图 ── */}
       <div className="relative overflow-hidden rounded-5xl border border-white/70 bg-white/40 shadow-soft backdrop-blur-sm">
         {/* 海图角标，给整块地图一个"图鉴"的画框感 */}

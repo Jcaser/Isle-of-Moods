@@ -312,24 +312,197 @@ const INTENTS: Intent[] = [
   },
 ]
 
-const DEFAULT_REPLY = (c: Citation[]): string => {
-  const top = c[0]
-  const basis = top
-    ? `关于这一点，屿藏书阁里有篇《${top.title}》提到：${top.snippet.replace(/^…/, '').slice(0, 110)}…`
-    : ''
-  return `我听到了。你现在的感受是真实的，不需要先证明它"够不够严重"才值得被照顾。
+/* ───────── 本地知识模式：先看话题与情绪，再组织一句"接住你的话"的回应 ───────── */
 
-${basis}
+type Tone = 'down' | 'anxious' | 'angry' | 'flat' | 'ok'
 
-我们可以先做一件很小的事：把现在的状态用一句话写下来（"我在担心____"），然后决定今天的最小一步是什么。不用解决全部，先让今天能过去。
+const TONE_RULES: [Tone, RegExp][] = [
+  ['down', /(难过|想哭|哭|委屈|低落|失落|没意思|不想动|丧|孤独|孤单|不想活|撑不住)/],
+  ['anxious', /(紧张|心慌|慌|怕|担心|害怕|焦虑|睡不着|失眠|来不及|压力|喘不过气)/],
+  ['angry', /(气死|生气|烦死|讨厌|受够|凭什么|憋屈|不公平|吵|忍不了)/],
+  ['flat', /(麻木|空落落|没感觉|无所谓|没劲|提不起|就这样吧)/],
+]
 
-你愿意说说，最让你卡住的是哪一部分吗？`
+const OPENERS: Record<Tone, string[]> = {
+  down: [
+    '听你这么说，我心里也沉了一下。',
+    '这句话背后，好像压着不少东西。',
+    '嗯，我听见了。这种难受，不需要先被证明"够严重"。',
+    '你能把它说出来，已经用掉了一些力气。',
+  ],
+  anxious: [
+    '这件事在你脑子里转了很久了吧。',
+    '这种紧绷感，是身体在说"这件事对我很重要"。',
+    '先别急着解决，我们把速度放慢一点。',
+    '慌的时候思路会变窄，这不是你不行。',
+  ],
+  angry: [
+    '这确实让人不好受，你会生气是有道理的。',
+    '被这样对待，心里堵着一口气很正常。',
+    '我先不劝你大度，先把这口气说清楚。',
+  ],
+  flat: [
+    '"没感觉"也是一种信号，通常是太累了。',
+    '麻木常常是身体在替你省电。',
+    '能说出"空"，说明你还在留意自己。',
+  ],
+  ok: ['我在，慢慢说。', '嗯，我在听。', '好，我们从你现在这句开始。', '谢谢你愿意讲这些。'],
 }
 
-/** 本地知识模式：检索 + 规则意图 + 共情模板 */
-export function offlineRespond(text: string, citations: Citation[], risk: RiskLevel): string {
-  for (const intent of INTENTS) {
-    if (intent.test.test(text)) return intent.build(citations)
+const TONE_NOTE: Record<Tone, string> = {
+  down: '这种情绪不是"想太多"，它通常是在提醒你：有些需要一直没被照顾到。',
+  anxious: '身体先拉了警报，思路跟着变窄，这很正常，不用因此再责备自己一遍。',
+  angry: '情绪先被接住，事情才谈得动；我们不急着评判谁对谁错。',
+  flat: '这时候不适合逼自己"振作起来"，先把电量恢复一点点更实际。',
+  ok: '',
+}
+
+type Domain = 'study' | 'people' | 'family' | 'body' | 'future' | 'self' | 'plain'
+
+const DOMAIN_RULES: [Domain, RegExp][] = [
+  ['study', /(复习|考试|学习|作业|论文|背书|刷题|成绩|上课|老师|挂科|绩点|课设)/],
+  ['people', /(室友|舍友|朋友|同学|社团|对象|男朋友|女朋友|分手|孤立|排挤|合不来)/],
+  ['family', /(爸爸|妈妈|爸妈|父母|家里|家人|亲戚|他们期待|失望)/],
+  ['body', /(头疼|胃疼|胸口|恶心|吃不下|没胃口|喘不上气|手抖|肩|眼睛|姨妈)/],
+  ['future', /(考研|保研|就业|工作|实习|前途|未来|毕业|排名|出路|考公)/],
+  ['self', /(没用|废物|讨厌自己|自卑|不如|比不上|失败|后悔|自责|不够好)/],
+]
+
+const ACTIONS: Record<Domain, string[]> = {
+  study: [
+    '把"复习"缩成一个能看见完成状态的动作，比如「打开错题本，改 3 道题」，然后只做这一件。',
+    '设一个 20 分钟的计时器，只做一页内容；铃响了就允许自己停。',
+    '先花 3 分钟列一张"今天不做也可以"的清单，把不重要的先划掉。',
+    '换一个位置学（书桌 → 图书馆靠窗），让环境帮你切换状态。',
+  ],
+  people: [
+    '先把想说的话写成三句：「发生了什么」「我什么感受」「我希望怎样」，不一定要发出去。',
+    '找一个不在这件事里的人，把经过讲一遍——讲着讲着往往自己就清楚卡在哪了。',
+    '给这段关系定一个小边界：今天先不回应，等情绪落下去再说。',
+  ],
+  family: [
+    '把"他们期待我"和"我想要"分成两栏写下来，先看清哪部分是自己的。',
+    '如果现在没法沟通，就先不沟通；今晚只照顾自己的那一部分。',
+    '找一句能挡住追问的话备着，比如"我知道你们担心，这件事我自己在想办法"。',
+  ],
+  body: [
+    '身体难受的时候，先处理身体：喝温水、把肩膀放下来、做 3 轮长呼气。',
+    '把手放在肚子上，感受 6 次呼吸，让注意力从念头回到身体。',
+    '如果症状持续或明显加重，去医院查一次，排除器质性问题会让人安心很多。',
+  ],
+  future: [
+    '把"以后怎么办"换成"这学期想做的一件小事"，范围缩小，焦虑才会降下来。',
+    '找一个已经走过这条路的人聊 20 分钟，信息比空想更能减少恐惧。',
+    '写下三个可选方向，每个只写第一步，不写结果。',
+  ],
+  self: [
+    '把"我怎么这么差"改写成"我现在卡在____这件事上"，把评价换成描述。',
+    '写三件今天做到的小事，哪怕只是起床、吃饭、洗了脸。',
+    '用你安慰朋友的那种语气，把刚才那句话对自己说一遍。',
+  ],
+  plain: [
+    '把现在最吵的那句话写在纸上，只写一句，写完看看它到底在担心什么。',
+    '起身接杯水，走到窗边站两分钟，让身体先离开这个场景。',
+    '把"我必须…"改成"我今天可以先…"，把命令换成邀请。',
+    '做 4 轮 4-7-8 呼吸（吸 4、屏 7、呼 8），呼气比吸气长，心率会跟着下来。',
+    '给这件事划一个"担心时段"：现在先记下来，晚上 8 点再想 15 分钟。',
+  ],
+}
+
+const CLOSERS = [
+  '你愿意从哪一句开始？',
+  '如果今天只推进 5%，你想推进哪 5%？',
+  '要不要先说说，最卡的那一下是什么？',
+  '需要我陪你把它拆小一点吗？',
+  '现在身体上最明显的感觉是什么？',
+  '你想先被听听，还是先要一个办法？',
+]
+
+/** 稳定哈希：同一个问题给同一个回答，不同问题换说法 */
+function seedOf(text: string): number {
+  let h = 2166136261
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i)
+    h = Math.imul(h, 16777619)
   }
-  return DEFAULT_REPLY(citations)
+  return Math.abs(h)
+}
+
+function pickOne<T>(arr: T[], seed: number, salt = 0): T {
+  return arr[(seed + salt * 37) % arr.length]
+}
+
+/** 摘一句用户自己的话，让回应落在他说过的东西上 */
+function quoteOf(text: string): string {
+  const clean = text.replace(/\s+/g, ' ').trim()
+  const clause = clean.split(/[。！？!?\n]/).find((s) => s.trim().length > 2) ?? clean
+  const s = clause.trim()
+  return s.length > 22 ? `${s.slice(0, 22)}…` : s
+}
+
+/** 中文二元组重叠数：用来判断"这条资料到底是不是在讲同一件事" */
+function overlapOf(a: string, b: string): number {
+  const grams = (s: string) => {
+    const clean = s.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '')
+    const set = new Set<string>()
+    for (let i = 0; i < clean.length - 1; i++) set.add(clean.slice(i, i + 2))
+    return set
+  }
+  const A = grams(a)
+  const B = grams(b)
+  let n = 0
+  for (const g of A) if (B.has(g)) n++
+  return n
+}
+
+/** 只引用真正相关的资料；不相关时宁可不引，也别硬塞一篇讲别的事的文章 */
+function bestCitation(text: string, citations: Citation[]): Citation | null {
+  let best: Citation | null = null
+  let bestN = 0
+  for (const c of citations) {
+    const n = overlapOf(text, `${c.title}${c.snippet}`)
+    if (n > bestN) {
+      bestN = n
+      best = c
+    }
+  }
+  return bestN >= 3 ? best : null
+}
+
+function composeReply(text: string, citations: Citation[]): string {
+  const seed = seedOf(text)
+  const tone = TONE_RULES.find(([, re]) => re.test(text))?.[0] ?? 'ok'
+  const domain = DOMAIN_RULES.find(([, re]) => re.test(text))?.[0] ?? 'plain'
+  const opener = pickOne(OPENERS[tone], seed)
+  const action = pickOne(ACTIONS[domain], seed, 1)
+  const close = pickOne(CLOSERS, seed, 2)
+  const note = TONE_NOTE[tone]
+  const top = bestCitation(text, citations)
+  const ref =
+    top != null
+      ? `\n\n屿藏书阁里《${top.title}》讲过相关的部分：${top.snippet.replace(/^…/, '').trim()} [${citations.indexOf(top) + 1}]`
+      : ''
+
+  return `${opener}
+
+你说的「${quoteOf(text)}」，我记下了。${note}${ref}
+
+先不急着把整件事解决，只试一小步：
+- ${action}
+
+${close}`
+}
+
+/** 本地知识模式：检索 + 规则意图 + 组合式回应 */
+export function offlineRespond(text: string, citations: Citation[], risk: RiskLevel): string {
+  for (let i = 0; i < INTENTS.length; i++) {
+    const intent = INTENTS[i]
+    if (!intent.test.test(text)) continue
+    // 危机那条保持原样，不加任何铺垫；其余先接一句他自己的话
+    if (i === 0) return intent.build(citations)
+    const tone = TONE_RULES.find(([, re]) => re.test(text))?.[0] ?? 'ok'
+    const lead = text.trim().length > 8 ? `${pickOne(OPENERS[tone], seedOf(text))}\n\n` : ''
+    return lead + intent.build(citations)
+  }
+  return composeReply(text, citations)
 }

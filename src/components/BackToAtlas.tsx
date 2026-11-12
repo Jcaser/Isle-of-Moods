@@ -11,7 +11,7 @@ export function BackToAtlas({ label = '回到岛屿地图', className = '' }: { 
 
   return (
     <button
-      onClick={() => navigate('/')}
+      onClick={() => navigate('/#atlas')}
       className={`group relative inline-flex items-center gap-2.5 rounded-full border border-white/75 bg-white/55 py-1.5 pl-1.5 pr-4 text-left backdrop-blur-md transition-all duration-300 hover:-translate-x-0.5 hover:border-sea-300/70 hover:bg-white/90 hover:shadow-[0_14px_30px_-22px_rgba(46,96,112,0.9)] focus-ring ${className}`}
       aria-label="返回岛屿全景地图"
     >

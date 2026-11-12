@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { useMemo, useState } from 'react'
 import { Icon } from '../components/Icons'
+import { Journal } from '../components/Journal'
 import { MoodCheckIn } from '../components/MoodCheckIn'
 import { MoodChart } from '../components/MoodChart'
 import { MoodHeatmap } from '../components/MoodHeatmap'
@@ -48,8 +49,11 @@ export default function Mood() {
         }
       />
 
+      {/* 岛屿日记：今天写下的，比曲线更具体 */}
+      <Journal />
+
       {/* 指标 */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           {
             label: `近 ${range} 天平均`,

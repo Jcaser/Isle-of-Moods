@@ -380,7 +380,7 @@ export default function Chat() {
       {/* 顶部栏 */}
       <header className="flex items-center justify-between gap-3 border-b border-white/60 bg-white/45 px-4 py-3 backdrop-blur-xl sm:px-6">
         <div className="flex items-center gap-2.5">
-          <Link to="/" className="btn-quiet h-9 w-9 rounded-full p-0" aria-label="返回岛屿" title="回到岛屿地图">
+          <Link to="/#atlas" className="btn-quiet h-9 w-9 rounded-full p-0" aria-label="返回岛屿" title="回到岛屿地图">
             <Icon name="arrowRight" size={17} className="rotate-180" />
           </Link>
           <div className="flex items-center gap-2.5">

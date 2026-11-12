@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Icon } from '../components/Icons'
 import { IslandAtlas } from '../components/IslandAtlas'
 import { MoodCheckIn } from '../components/MoodCheckIn'
@@ -16,10 +16,20 @@ export default function Home() {
   const openBreathing = useAppStore((s) => s.openBreathing)
   const setAssessmentOpen = useAppStore((s) => s.setAssessmentOpen)
   const [moment, setMoment] = useState<Moment>('noon')
+  const { hash } = useLocation()
 
   useEffect(() => {
     setMoment(loadMoment())
   }, [])
+
+  // 从副页面点「回到岛屿地图」时，直接落到地图，而不是停在首屏大标题上
+  useEffect(() => {
+    if (hash !== '#atlas') return
+    const t = window.setTimeout(() => {
+      document.getElementById('atlas')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 120)
+    return () => window.clearTimeout(t)
+  }, [hash])
 
   const series = buildSeries(records, 7)
   const summary = summarize(records, 7)

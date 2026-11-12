@@ -263,7 +263,7 @@ function BackHomeRail() {
   return (
     <div className="relative z-10 mx-auto mt-14 w-full max-w-6xl px-4 sm:px-6 lg:px-8">
       <button
-        onClick={() => navigate('/')}
+        onClick={() => navigate('/#atlas')}
         className="group flex w-full items-center justify-between gap-4 overflow-hidden rounded-4xl border border-white/75 bg-white/50 px-5 py-4 text-left backdrop-blur-md transition-all duration-400 hover:-translate-y-0.5 hover:border-sea-300/60 hover:bg-white/85 hover:shadow-[0_30px_60px_-40px_rgba(46,96,112,0.9)] sm:px-7 sm:py-5"
       >
         <span className="flex items-center gap-4">
