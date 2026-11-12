@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import { applyMoment, loadMoment } from '../lib/moment'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../store/useAppStore'
 import { useAuthStore } from '../store/useAuthStore'
 import { Icon, type IconName } from './Icons'
@@ -145,11 +145,34 @@ function Nav() {
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen)
   const hasKey = useAppStore((s) => Boolean(s.settings.apiKey))
   const { pathname } = useLocation()
+  const [scrolled, setScrolled] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 14)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
   if (pathname.startsWith('/chat')) return null
 
   return (
     <header className="sticky top-0 z-40 px-3 pt-3 sm:px-6 sm:pt-5">
-      <div className="glass mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 rounded-full px-3 sm:h-16 sm:px-4">
+      {/* 滚动时顶部渐隐，内容从导航上方淡出，不会硬切 */}
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-x-0 top-0 -z-10 h-[calc(100%+6px)] transition-opacity duration-500 ${
+          scrolled ? 'opacity-100' : 'opacity-0'
+        }`}
+        style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.6) 58%, rgba(255,255,255,0) 100%)' }}
+      />
+      <div
+        className={`mx-auto flex max-w-6xl items-center justify-between gap-2 rounded-full px-3 transition-all duration-500 sm:px-4 ${
+          scrolled
+            ? 'h-14 border border-white/90 bg-white shadow-[0_20px_44px_-34px_rgba(46,96,112,0.95)] backdrop-blur-2xl sm:h-[58px]'
+            : 'glass h-14 sm:h-16'
+        }`}
+      >
         <Brand />
         <nav className="hidden items-center gap-0.5 md:flex" aria-label="主导航">
           {NAV.map((item) => (
@@ -180,8 +203,8 @@ function Nav() {
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setSettingsOpen(true)}
-            className={`hidden items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium transition lg:flex ${
-              hasKey ? 'bg-sea-50/80 text-sea-600' : 'bg-sand-100 text-ink-500 hover:bg-sand-200'
+            className={`hidden items-center gap-1.5 rounded-full border border-white/80 px-3 py-1.5 text-[11px] font-medium transition lg:flex ${
+              hasKey ? 'bg-sea-50/90 text-sea-600' : 'bg-white/70 text-ink-500 hover:bg-white'
             }`}
             aria-label="打开设置"
           >
@@ -231,6 +254,35 @@ function MobileTabs() {
         ))}
       </div>
     </nav>
+  )
+}
+
+/** 长页面滚到底时，再给一次"回地图"的出口 */
+function BackHomeRail() {
+  const navigate = useNavigate()
+  return (
+    <div className="relative z-10 mx-auto mt-14 w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+      <button
+        onClick={() => navigate('/')}
+        className="group flex w-full items-center justify-between gap-4 overflow-hidden rounded-4xl border border-white/75 bg-white/50 px-5 py-4 text-left backdrop-blur-md transition-all duration-400 hover:-translate-y-0.5 hover:border-sea-300/60 hover:bg-white/85 hover:shadow-[0_30px_60px_-40px_rgba(46,96,112,0.9)] sm:px-7 sm:py-5"
+      >
+        <span className="flex items-center gap-4">
+          <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-sea-100 via-white to-lav-100 text-sea-600">
+            <span className="absolute inset-0 rounded-2xl border border-sea-300/40 transition-transform duration-500 group-hover:scale-105" />
+            <Icon name="compass" size={19} />
+          </span>
+          <span className="block">
+            <span className="block text-[9px] font-semibold uppercase tracking-[0.28em] text-sea-500">Back to Atlas</span>
+            <span className="mt-1 block font-display text-[16px] font-semibold tracking-tight text-ink-900 sm:text-[18px]">
+              回到岛屿地图，换一处上岸
+            </span>
+          </span>
+        </span>
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-sea-300/50 text-sea-600 transition-transform duration-300 group-hover:translate-x-1">
+          <Icon name="arrowRight" size={15} />
+        </span>
+      </button>
+    </div>
   )
 }
 
@@ -311,6 +363,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
 export function Layout({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation()
   const isChat = pathname.startsWith('/chat')
+  const isHome = pathname === '/'
 
   // 启动时恢复上次选择的岛屿时刻（清晨 / 正午 / 黄昏 / 夜航）
   useEffect(() => {
@@ -338,6 +391,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <main id="main" className="relative z-10 flex-1">
         <PageShell>{children}</PageShell>
       </main>
+      {!isChat && !isHome && <BackHomeRail />}
       {!isChat && <Footer />}
       {!isChat && <MobileTabs />}
     </div>

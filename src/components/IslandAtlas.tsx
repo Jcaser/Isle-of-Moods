@@ -6,7 +6,7 @@ import { MOMENTS, loadMoment, saveMoment, type Moment } from '../lib/moment'
 import { useAppStore } from '../store/useAppStore'
 import { Icon } from './Icons'
 
-type SpotId = 'light' | 'library' | 'tide' | 'play' | 'lookout' | 'harbor' | 'stone'
+type SpotId = 'light' | 'library' | 'tide' | 'play' | 'lookout' | 'harbor'
 
 type Spot = {
   id: SpotId
@@ -87,28 +87,8 @@ const SPOTS: Spot[] = [
     action: 'read',
   },
   {
-    id: 'stone',
-    index: '04',
-    name: '岛心石碑',
-    en: 'The Stone',
-    to: '/about',
-    x: 410,
-    y: 356,
-    lx: 452,
-    ly: 358,
-    anchor: 'middle',
-    tagline: '刻着这座岛为什么存在，也刻着它做不到的事。',
-    points: [
-      '项目定位、技术架构与隐私说明：不注册、不上传、不上云。',
-      '明确边界：自助辅助工具，不替代咨询师与医生。',
-      '面向校园心理中心与培训机构的落地方式。',
-    ],
-    meta: '关于 · 免责声明',
-    action: 'about',
-  },
-  {
     id: 'tide',
-    index: '05',
+    index: '04',
     name: '潮汐湾',
     en: 'Tide Cove',
     to: '/calm',
@@ -128,7 +108,7 @@ const SPOTS: Spot[] = [
   },
   {
     id: 'harbor',
-    index: '06',
+    index: '05',
     name: '避风港',
     en: 'Safe Harbor',
     to: '/harbor',
@@ -148,7 +128,7 @@ const SPOTS: Spot[] = [
   },
   {
     id: 'play',
-    index: '07',
+    index: '06',
     name: '乐园沙滩',
     en: 'Play Shore',
     to: '/play',
@@ -217,7 +197,16 @@ const MAX_ZOOM = 2.4
 
 /** 岛屿俯瞰图：可点选的地点，先看内容再决定去哪 */
 export function IslandAtlas() {
-  const [active, setActive] = useState<SpotId>('light')
+  // 从副页面回到地图时，恢复上次停下的那一处，不用重新找
+  const [active, setActive] = useState<SpotId>(() => {
+    try {
+      const saved = sessionStorage.getItem('sereneisle.atlas.active')
+      if (saved && SPOTS.some((s) => s.id === saved)) return saved as SpotId
+    } catch {
+      /* 隐私模式下忽略 */
+    }
+    return 'light'
+  })
   const [hover, setHover] = useState<SpotId | null>(null)
   const [moment, setMoment] = useState<Moment>('noon')
   const [quote, setQuote] = useState(0)
@@ -235,6 +224,14 @@ export function IslandAtlas() {
   useEffect(() => {
     setMoment(loadMoment())
   }, [])
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('sereneisle.atlas.active', active)
+    } catch {
+      /* 隐私模式下忽略 */
+    }
+  }, [active])
 
   const spot = useMemo(() => SPOTS.find((s) => s.id === active) ?? SPOTS[0], [active])
   const doc = KNOWLEDGE_DOCS[quote % KNOWLEDGE_DOCS.length]
@@ -377,6 +374,13 @@ export function IslandAtlas() {
     <div className="grid items-start gap-4 lg:grid-cols-[1.52fr_1fr]">
       {/* ── 地图 ── */}
       <div className="relative overflow-hidden rounded-5xl border border-white/70 bg-white/40 shadow-soft backdrop-blur-sm">
+        {/* 海图角标，给整块地图一个"图鉴"的画框感 */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-2.5 z-20">
+          <span className="absolute left-0 top-0 h-4 w-4 rounded-tl-md border-l border-t border-sea-400/70" />
+          <span className="absolute right-0 top-0 h-4 w-4 rounded-tr-md border-r border-t border-sea-400/70" />
+          <span className="absolute bottom-0 left-0 h-4 w-4 rounded-bl-md border-b border-l border-sea-400/70" />
+          <span className="absolute bottom-0 right-0 h-4 w-4 rounded-br-md border-b border-r border-sea-400/70" />
+        </div>
         <div className="flex items-start justify-between gap-3 px-5 pb-1 pt-4">
           <div>
             <p className="text-[9.5px] font-semibold uppercase tracking-[0.26em] text-sea-500">Island Atlas</p>
@@ -427,7 +431,7 @@ export function IslandAtlas() {
           viewBox="146 104 574 424"
           className="w-full select-none"
           role="img"
-          aria-label="清绪之屿全景地图：灯塔、藏书阁、潮汐湾、乐园沙滩、观测台、避风港与岛心石碑"
+          aria-label="清绪之屿全景地图：灯塔、藏书阁、潮汐湾、乐园沙滩、观测台与避风港"
         >
           <defs>
             <linearGradient id="atlas-sea" x1="0.1" y1="0" x2="0.5" y2="1">
@@ -676,15 +680,22 @@ export function IslandAtlas() {
             </g>
           </g>
 
-          {/* ── 岛心石碑 ── */}
-          <g transform="translate(410,356)">
-            <g {...spotProps('stone', '岛心石碑')}>
-              <circle className="atlas-ring" r="26" fill="none" stroke="rgba(120,160,150,0.4)" strokeWidth="1.1" strokeDasharray="3 5" />
-              <ellipse cx="0" cy="13" rx="15" ry="5" fill="rgba(88,132,110,0.18)" />
-              <path d="M-8 13 L-6.5 -12 C -6.5 -18 6.5 -18 6.5 -12 L8 13 Z" fill="#e9ede8" stroke="#c6d1c6" strokeWidth="1.1" />
-              <path d="M-4 -7 h7 M-4 -3 h5.5 M-4 1 h6.5" stroke="rgba(120,150,140,0.5)" strokeWidth="1" strokeLinecap="round" />
-              <ellipse cx="0" cy="-15" rx="6.5" ry="3" fill="#dfe6df" />
-            </g>
+          {/* ── 岛心的一小片野花与碎石 ── */}
+          <g pointerEvents="none">
+            <ellipse cx="410" cy="358" rx="30" ry="12" fill="rgba(96,150,120,0.16)" />
+            {([
+              [396, 352, 2.6, '#eeb49f'],
+              [404, 361, 1.9, '#bda9e6'],
+              [415, 351, 2.2, '#f3d488'],
+              [423, 361, 1.8, '#eeb49f'],
+              [409, 366, 1.6, '#ffffff'],
+              [431, 354, 1.5, '#bda9e6'],
+              [400, 366, 1.4, '#f3d488'],
+            ] as const).map(([x, y, r, c]) => (
+              <circle key={`${x}-${y}`} cx={x} cy={y} r={r} fill={c} />
+            ))}
+            <circle cx="389" cy="363" r="4" fill="#9fc4ac" />
+            <circle cx="434" cy="366" r="3.2" fill="#aecfba" />
           </g>
 
           {/* ── 潮汐湾 ── */}
@@ -896,7 +907,9 @@ export function IslandAtlas() {
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-display text-[11px] tracking-[0.3em] text-sea-400">{spot.index} / 07</p>
+                <p className="font-display text-[11px] tracking-[0.3em] text-sea-400">
+                  {spot.index} / {String(SPOTS.length).padStart(2, '0')}
+                </p>
                 <h3 className="mt-1.5 font-display text-[22px] font-semibold tracking-tight text-ink-900">{spot.name}</h3>
                 <p className="mt-0.5 text-[10.5px] uppercase tracking-[0.2em] text-ink-300">{spot.en}</p>
               </div>

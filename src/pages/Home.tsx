@@ -177,7 +177,7 @@ export default function Home() {
           <div>
             <p className="text-[10.5px] font-semibold uppercase tracking-[0.26em] text-sea-500">Walk the island</p>
             <h2 className="mt-1.5 font-display text-[22px] font-semibold tracking-tight text-ink-900 sm:text-[26px]">
-              岛上七处，随便挑一处上岸
+              岛上六处，随便挑一处上岸
             </h2>
           </div>
           <Link to="/about" className="hidden items-center gap-1 text-[12px] text-ink-400 transition hover:text-ink-900 sm:flex">

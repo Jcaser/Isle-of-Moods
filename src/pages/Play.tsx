@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
+import { BackToAtlas } from '../components/BackToAtlas'
 import { Icon, type IconName } from '../components/Icons'
 import { Bubbles } from '../components/games/Bubbles'
 import { ShellHunt } from '../components/games/ShellHunt'
@@ -102,20 +103,27 @@ export default function Play() {
   return (
     <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8">
       {/* 头部 */}
-      <section className="pb-6 pt-8 sm:pt-12">
-        <span className="sticker">
-          <Icon name="sparkles" size={12} />
-          PLAY SHORE · 不费脑子的四个小岛
-        </span>
+      <section className="pb-6 pt-5 sm:pt-7">
+        <BackToAtlas />
+        <div className="mt-7">
+          <span className="sticker">
+            <Icon name="sparkles" size={12} />
+            PLAY SHORE · 不费脑子的四个小岛
+          </span>
+        </div>
         <h1 className="mt-5 font-display text-[34px] font-semibold leading-[1.2] tracking-tight text-ink-900 sm:text-[44px]">
           学不进去的时候，
           <br className="sm:hidden" />
           先来<span className="text-gradient">玩两分钟</span>。
         </h1>
-        <p className="mt-4 max-w-xl text-[13.5px] leading-[1.9] text-ink-500">
-          这里没有分数、没有排行榜、没有连续打卡。四个小游戏都发生在本地浏览器里，玩到一半关掉也不会有任何损失。
-          如果玩完心情松了一点，可以顺手在下面记一笔。
-        </p>
+        <div className="mt-4 flex max-w-xl gap-3.5">
+          <span className="mt-1 h-[calc(100%-8px)] w-[2px] shrink-0 rounded-full bg-gradient-to-b from-coral-300/90 via-lav-300/70 to-transparent" />
+          <p className="text-[13.5px] leading-[1.9] text-ink-500">
+            这里没有分数、没有排行榜、没有连续打卡。四个小游戏都发生在本地浏览器里，玩到一半关掉也不会有任何损失。
+            如果玩完心情松了一点，可以顺手在下面记一笔。
+          </p>
+        </div>
+        <div className="hairline mt-7 opacity-70" />
       </section>
 
       {/* 选择 */}
