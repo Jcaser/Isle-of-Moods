@@ -1,8 +1,9 @@
-import { motion } from 'framer-motion'
-import { useEffect, useRef } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useRef, useState } from 'react'
 import { applyMoment, loadMoment } from '../lib/moment'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAppStore } from '../store/useAppStore'
+import { useAuthStore } from '../store/useAuthStore'
 import { Icon, type IconName } from './Icons'
 import { WaveBackground } from './WaveBackground'
 import { ParticleField } from './ParticleField'
@@ -37,6 +38,106 @@ function Brand({ compact }: { compact?: boolean }) {
         </span>
       )}
     </NavLink>
+  )
+}
+
+
+/** 岛主头像与菜单 */
+function UserMenu() {
+  const user = useAuthStore((s) => s.user)
+  const signOut = useAuthStore((s) => s.signOut)
+  const setSettingsOpen = useAppStore((s) => s.setSettingsOpen)
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  if (!user) return null
+  const joined = new Date(user.createdAt).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 rounded-full border border-white/80 bg-white/60 py-1 pl-1 pr-2 transition hover:bg-white/90"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="岛主菜单"
+      >
+        <span
+          className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white shadow-[0_4px_10px_-6px_rgba(46,96,112,0.8)]"
+          style={{ background: `linear-gradient(135deg, hsl(${user.hue} 62% 72%), hsl(${(user.hue + 40) % 360} 58% 66%))` }}
+        >
+          {user.name.slice(0, 1)}
+        </span>
+        <span className="hidden max-w-[64px] truncate text-[11.5px] font-medium text-ink-700 sm:block">{user.name}</span>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.18 }}
+            role="menu"
+            className="absolute right-0 top-[calc(100%+8px)] w-52 overflow-hidden rounded-3xl border border-white/85 bg-white/92 p-1.5 shadow-[0_30px_60px_-36px_rgba(46,96,112,0.6)] backdrop-blur-xl"
+          >
+            <div className="px-3 py-2">
+              <p className="truncate font-display text-[13px] font-semibold text-ink-900">{user.name}</p>
+              <p className="mt-0.5 text-[10.5px] text-ink-300">
+                {user.guest ? '过客身份 · 数据公用' : `${joined} 登岛`}
+              </p>
+            </div>
+            <div className="my-1 h-px bg-ink-900/6" />
+            <NavLink
+              to="/mood"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 rounded-2xl px-3 py-2 text-[12.5px] text-ink-600 transition hover:bg-sea-50/80 hover:text-sea-700"
+              role="menuitem"
+            >
+              <Icon name="chart" size={14} />
+              我的潮向
+            </NavLink>
+            <button
+              onClick={() => {
+                setOpen(false)
+                setSettingsOpen(true)
+              }}
+              className="flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-[12.5px] text-ink-600 transition hover:bg-sea-50/80 hover:text-sea-700"
+              role="menuitem"
+            >
+              <Icon name="settings" size={14} />
+              岛屿设置
+            </button>
+            <div className="my-1 h-px bg-ink-900/6" />
+            <button
+              onClick={() => {
+                setOpen(false)
+                signOut()
+              }}
+              className="flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-[12.5px] text-ink-500 transition hover:bg-coral-300/15 hover:text-coral-600"
+              role="menuitem"
+            >
+              <Icon name="logout" size={14} />
+              切换岛主
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }
 
@@ -88,12 +189,22 @@ function Nav() {
             {hasKey ? 'AI 已连接' : '本地模式'}
           </button>
           <button
+            onClick={() => window.dispatchEvent(new Event('serene:palette'))}
+            className="hidden items-center gap-1 rounded-full border border-white/80 bg-white/50 px-2 py-1 text-[10px] text-ink-400 transition hover:bg-white/90 hover:text-ink-700 sm:flex"
+            aria-label="打开快捷命令"
+            title="快捷命令（⌘K）"
+          >
+            <Icon name="compass" size={12} />
+            <span className="tracking-wide">⌘K</span>
+          </button>
+          <button
             onClick={() => setSettingsOpen(true)}
             className="btn-quiet h-9 w-9 rounded-full p-0"
             aria-label="设置"
           >
             <Icon name="settings" size={18} />
           </button>
+          <UserMenu />
         </div>
       </div>
     </header>
@@ -136,7 +247,7 @@ function Footer() {
             </p>
             <p className="mt-3 flex items-center gap-1.5 text-[11px] text-ink-300">
               <Icon name="shield" size={13} />
-              隐私优先 · 本地存储 · 无账号体系
+              隐私优先 · 本地账号 · 数据不出本机
             </p>
           </div>
 

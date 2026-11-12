@@ -42,7 +42,7 @@ export function IntroModal() {
       <div className="mt-4 flex items-start gap-2 rounded-2xl border border-sea-200/60 bg-sea-50/60 px-4 py-3">
         <Icon name="shield" size={15} className="mt-0.5 shrink-0 text-sea-600" />
         <p className="text-[11.5px] leading-relaxed text-ink-600">
-          你的对话与情绪记录<strong className="font-semibold">只保存在本机浏览器</strong>，不需要注册账号，我们看不到你的内容。
+          你的对话与情绪记录<strong className="font-semibold">只保存在这台设备</strong>，按本机名字分区存放，我们看不到你的内容。
         </p>
       </div>
 

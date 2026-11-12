@@ -39,6 +39,21 @@ export const PHASE_LABEL: Record<PhaseKey, string> = {
   rest: '停留',
 }
 
+/** 相位短名，用于节奏条 */
+export const PHASE_SHORT: Record<PhaseKey, string> = {
+  inhale: '吸',
+  hold: '屏',
+  exhale: '呼',
+  rest: '停',
+}
+
+export const PHASE_TIP: Record<PhaseKey, string> = {
+  inhale: '用鼻子安静吸气，肩膀不要用力',
+  hold: '轻轻屏住，喉咙放松，不要绷紧',
+  exhale: '用嘴缓慢呼气，像把气吹到很远的地方',
+  rest: '停一下，感受身体的重量',
+}
+
 export interface PhaseInfo {
   key: PhaseKey
   label: string
@@ -62,7 +77,7 @@ export function buildTimeline(p: BreathingPattern): { key: PhaseKey; duration: n
 export function phaseAt(p: BreathingPattern, elapsedMs: number): PhaseInfo {
   const seq = buildTimeline(p)
   const cycleLen = seq.reduce((s, x) => s + x.duration, 0)
-  const t = elapsedMs / 1000
+  const t = Math.max(0, elapsedMs) / 1000
   const cycle = Math.floor(t / cycleLen) + 1
   let rest = t % cycleLen
   let index = 0
@@ -87,17 +102,33 @@ export function phaseAt(p: BreathingPattern, elapsedMs: number): PhaseInfo {
   }
 }
 
-/** 各相位对应的球体缩放：吸气放大、屏息保持、呼气缩小 */
-export function scaleFor(info: PhaseInfo): number {
-  const MIN = 0.62
-  const MAX = 1
-  if (info.key === 'hold') return MAX
-  if (info.key === 'rest') return MIN
-  if (info.key === 'inhale') {
-    const e = Math.pow(info.progress, 0.85)
-    return MIN + (MAX - MIN) * e
+/** 余弦缓动：起止都柔和，接近真实呼吸的加速度 */
+function easeInOut(p: number): number {
+  return 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, p)))
+}
+
+/**
+ * 呼吸强度：0 = 完全呼尽，1 = 吸满。
+ * 吸气用余弦缓动；呼气是“被动回落”，开头快、结尾慢；
+ * 屏息时保持接近 1，并带极轻的起伏，避免看起来像画面卡住。
+ */
+export function breathLevel(info: PhaseInfo): number {
+  switch (info.key) {
+    case 'inhale':
+      return easeInOut(info.progress)
+    case 'hold':
+      return 1 + Math.sin(info.progress * Math.PI) * 0.018
+    case 'exhale': {
+      const p = Math.min(1, Math.max(0, info.progress))
+      return Math.pow(1 - p, 1.45)
+    }
+    case 'rest':
+    default:
+      return 0
   }
-  // 呼气：前段快、后段慢，更接近真实呼气曲线
-  const e = 1 - Math.pow(1 - info.progress, 2.2)
-  return MAX - (MAX - MIN) * e
+}
+
+/** 球体缩放：呼尽时仍有 0.56，不会缩成一个点 */
+export function scaleFor(level: number): number {
+  return 0.56 + level * 0.5
 }

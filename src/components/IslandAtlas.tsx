@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { KNOWLEDGE_DOCS } from '../lib/knowledge'
 import { MOMENTS, loadMoment, saveMoment, type Moment } from '../lib/moment'
@@ -54,8 +54,8 @@ const SPOTS: Spot[] = [
     to: '/mood',
     x: 528,
     y: 266,
-    lx: 596,
-    ly: 256,
+    lx: 582,
+    ly: 262,
     anchor: 'start',
     tagline: '把每天的情绪画成一条线，你才看得见自己其实在往前走。',
     points: [
@@ -74,8 +74,8 @@ const SPOTS: Spot[] = [
     to: '/library',
     x: 286,
     y: 320,
-    lx: 286,
-    ly: 374,
+    lx: 292,
+    ly: 370,
     anchor: 'middle',
     tagline: '十二本关于焦虑、睡眠与学习科学的书，答案都能翻回原页。',
     points: [
@@ -94,8 +94,8 @@ const SPOTS: Spot[] = [
     to: '/about',
     x: 410,
     y: 356,
-    lx: 410,
-    ly: 396,
+    lx: 452,
+    ly: 358,
     anchor: 'middle',
     tagline: '刻着这座岛为什么存在，也刻着它做不到的事。',
     points: [
@@ -114,9 +114,9 @@ const SPOTS: Spot[] = [
     to: '/calm',
     x: 232,
     y: 418,
-    lx: 252,
-    ly: 452,
-    anchor: 'middle',
+    lx: 282,
+    ly: 430,
+    anchor: 'start',
     tagline: '海水一来一回，你只要跟着它呼吸，不用想别的。',
     points: [
       '4-7-8 / 4-4-4-4 / 谐振呼吸三种节奏，球体随相位缩放。',
@@ -134,8 +134,8 @@ const SPOTS: Spot[] = [
     to: '/harbor',
     x: 186,
     y: 470,
-    lx: 194,
-    ly: 514,
+    lx: 192,
+    ly: 486,
     anchor: 'middle',
     tagline: '当风浪真的太大时，这里只做一件事：把你交给能接住你的人。',
     points: [
@@ -154,8 +154,8 @@ const SPOTS: Spot[] = [
     to: '/play',
     x: 590,
     y: 398,
-    lx: 606,
-    ly: 450,
+    lx: 596,
+    ly: 460,
     anchor: 'middle',
     tagline: '四个不费脑子的解压小游戏，专门给"学不进去"的那半小时。',
     points: [
@@ -211,14 +211,26 @@ function Tree({ x, y, r, tone }: { x: number; y: number; r: number; tone: string
   )
 }
 
+/** 地图视野（对应 SVG viewBox） */
+const VIEW = { x: 146, y: 104, w: 574, h: 424 }
+const MAX_ZOOM = 2.4
+
 /** 岛屿俯瞰图：可点选的地点，先看内容再决定去哪 */
 export function IslandAtlas() {
   const [active, setActive] = useState<SpotId>('light')
   const [hover, setHover] = useState<SpotId | null>(null)
   const [moment, setMoment] = useState<Moment>('noon')
   const [quote, setQuote] = useState(0)
+  const [zoom, setZoom] = useState(1)
   const navigate = useNavigate()
   const openBreathing = useAppStore((s) => s.openBreathing)
+
+  const stageRef = useRef<HTMLDivElement | null>(null)
+  const layerRef = useRef<HTMLDivElement | null>(null)
+  const cam = useRef({ x: 0, y: 0, k: 1 })
+  const goal = useRef({ x: 0, y: 0, k: 1 })
+  const rafRef = useRef(0)
+  const drag = useRef({ on: false, sx: 0, sy: 0, ox: 0, oy: 0, moved: 0 })
 
   useEffect(() => {
     setMoment(loadMoment())
@@ -226,6 +238,59 @@ export function IslandAtlas() {
 
   const spot = useMemo(() => SPOTS.find((s) => s.id === active) ?? SPOTS[0], [active])
   const doc = KNOWLEDGE_DOCS[quote % KNOWLEDGE_DOCS.length]
+
+  const applyCam = useCallback(() => {
+    const el = layerRef.current
+    if (!el) return
+    el.style.transform = `translate3d(${cam.current.x.toFixed(2)}px, ${cam.current.y.toFixed(2)}px, 0) scale(${cam.current.k.toFixed(4)})`
+    el.style.setProperty('--inv', (1 / cam.current.k).toFixed(4))
+  }, [])
+
+  const clampPan = useCallback((x: number, y: number, k: number) => {
+    const r = stageRef.current?.getBoundingClientRect()
+    const w = r?.width ?? 600
+    const h = r?.height ?? 440
+    const mx = (w * (k - 1)) / 2 + 8
+    const my = (h * (k - 1)) / 2 + 8
+    return { x: Math.max(-mx, Math.min(mx, x)), y: Math.max(-my, Math.min(my, y)) }
+  }, [])
+
+  /** 惯性插值：拖动时 1:1，按钮与滚轮缩放时柔和过渡 */
+  const animateCam = useCallback(() => {
+    cancelAnimationFrame(rafRef.current)
+    layerRef.current?.classList.add('is-moving')
+    const step = () => {
+      const c = cam.current
+      const g = goal.current
+      c.x += (g.x - c.x) * 0.24
+      c.y += (g.y - c.y) * 0.24
+      c.k += (g.k - c.k) * 0.24
+      applyCam()
+      if (Math.abs(g.x - c.x) > 0.35 || Math.abs(g.y - c.y) > 0.35 || Math.abs(g.k - c.k) > 0.0015) {
+        rafRef.current = requestAnimationFrame(step)
+      } else {
+        cam.current = { ...g }
+        applyCam()
+        layerRef.current?.classList.remove('is-moving')
+      }
+    }
+    rafRef.current = requestAnimationFrame(step)
+  }, [applyCam])
+
+  const zoomTo = useCallback(
+    (next: number) => {
+      const k = Math.max(1, Math.min(MAX_ZOOM, Number(next.toFixed(2))))
+      const ratio = goal.current.k === 0 ? 1 : k / goal.current.k
+      const p = clampPan(goal.current.x * ratio, goal.current.y * ratio, k)
+      goal.current = { ...p, k }
+      if (k === 1) goal.current = { x: 0, y: 0, k: 1 }
+      setZoom(k)
+      animateCam()
+    },
+    [animateCam, clampPan]
+  )
+
+  useEffect(() => () => cancelAnimationFrame(rafRef.current), [])
 
   const pickMoment = (m: Moment) => {
     setMoment(m)
@@ -240,12 +305,63 @@ export function IslandAtlas() {
     navigate(spot.to)
   }
 
+  const pick = useCallback((id: SpotId) => {
+    // 拖动地图时不要误选地点
+    if (drag.current.moved > 8) {
+      drag.current.moved = 0
+      return
+    }
+    setActive(id)
+  }, [])
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return
+    // 只记录起点，不抢指针：否则捕获后 click 会落到容器上，按钮点不动
+    drag.current = { on: true, sx: e.clientX, sy: e.clientY, ox: goal.current.x, oy: goal.current.y, moved: 0 }
+  }
+
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      const d = drag.current
+      if (!d.on) return
+      const dx = e.clientX - d.sx
+      const dy = e.clientY - d.sy
+      d.moved = Math.max(d.moved, Math.abs(dx) + Math.abs(dy))
+      if (d.moved < 4) return
+      stageRef.current?.classList.add('is-dragging')
+      layerRef.current?.classList.add('is-moving')
+      const p = clampPan(d.ox + dx, d.oy + dy, goal.current.k)
+      goal.current = { ...goal.current, ...p }
+      cam.current.x = p.x
+      cam.current.y = p.y
+      applyCam()
+    }
+    const up = () => {
+      drag.current.on = false
+      stageRef.current?.classList.remove('is-dragging')
+      layerRef.current?.classList.remove('is-moving')
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+  }, [applyCam, clampPan])
+
+  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    // 只有按住 Ctrl / ⌘ 才缩放，避免劫持页面滚动
+    if (!(e.ctrlKey || e.metaKey)) return
+    e.preventDefault()
+    zoomTo(goal.current.k * (e.deltaY > 0 ? 0.92 : 1.08))
+  }
+
   const spotProps = (id: SpotId, label: string) => ({
     className: 'atlas-spot',
     'data-active': active === id,
-    onMouseEnter: () => setHover(id),
-    onMouseLeave: () => setHover(null),
-    onClick: () => setActive(id),
+    onClick: () => pick(id),
     role: 'button' as const,
     tabIndex: 0,
     'aria-label': label,
@@ -265,6 +381,9 @@ export function IslandAtlas() {
           <div>
             <p className="text-[9.5px] font-semibold uppercase tracking-[0.26em] text-sea-500">Island Atlas</p>
             <p className="mt-1 font-display text-[14px] font-semibold tracking-tight text-ink-900">点一处，看看那里有什么</p>
+            <p className="mt-0.5 hidden text-[9.5px] tracking-wide text-ink-300 sm:block">
+              拖动平移 · ⌘/Ctrl 滚轮缩放 · 双击放大
+            </p>
           </div>
           <div className="flex shrink-0 items-center gap-1 rounded-full border border-white/80 bg-white/70 p-1 backdrop-blur">
             {MOMENTS.map((m) => (
@@ -294,6 +413,16 @@ export function IslandAtlas() {
           </div>
         </div>
 
+        <div
+          ref={stageRef}
+          onPointerDown={onPointerDown}
+          onWheel={onWheel}
+          onDoubleClick={() => zoomTo(zoom > 1.05 ? 1 : 1.9)}
+          className="atlas-stage relative touch-pan-y overflow-hidden"
+        >
+          <div ref={layerRef} className="atlas-layer">
+            {useMemo(
+              () => (
         <svg
           viewBox="146 104 574 424"
           className="w-full select-none"
@@ -379,12 +508,13 @@ export function IslandAtlas() {
           </g>
 
           {/* 沙滩层 */}
-          <path
-            d="M196 322 C 200 256 252 194 332 170 C 402 149 472 158 532 184 C 592 210 642 256 658 318
-               C 674 380 628 440 558 464 C 488 488 398 486 318 462 C 250 442 192 388 196 322 Z"
-            fill="url(#atlas-sand)"
-            filter="url(#atlas-shadow)"
-          />
+          {/* 阴影用两层偏移路径代替 SVG 滤镜：缩放时不再逐帧重算高斯模糊 */}
+          <path d="M196 322 C 200 256 252 194 332 170 C 402 149 472 158 532 184 C 592 210 642 256 658 318
+               C 674 380 628 440 558 464 C 488 488 398 486 318 462 C 250 442 192 388 196 322 Z" fill="rgba(84,132,144,0.10)" transform="translate(0,16)" />
+          <path d="M196 322 C 200 256 252 194 332 170 C 402 149 472 158 532 184 C 592 210 642 256 658 318
+               C 674 380 628 440 558 464 C 488 488 398 486 318 462 C 250 442 192 388 196 322 Z" fill="rgba(84,132,144,0.13)" transform="translate(0,9)" />
+          <path d="M196 322 C 200 256 252 194 332 170 C 402 149 472 158 532 184 C 592 210 642 256 658 318
+               C 674 380 628 440 558 464 C 488 488 398 486 318 462 C 250 442 192 388 196 322 Z" fill="url(#atlas-sand)" />
           {/* 草地层 */}
           <path
             d="M220 322 C 224 264 270 210 342 188 C 406 168 470 176 526 200 C 580 224 624 266 638 320
@@ -495,7 +625,7 @@ export function IslandAtlas() {
               <circle className="atlas-ring" r="46" fill="none" stroke="rgba(74,151,170,0.4)" strokeWidth="1.2" strokeDasharray="3 5" />
               <ellipse cx="0" cy="6" rx="24" ry="8" fill="rgba(88,132,110,0.16)" />
               <circle r="60" fill="url(#atlas-lamp)" opacity="0.5" />
-              <path d="M-9 4 L-5.5 -46 L5.5 -46 L9 4 Z" fill="#fffdf7" stroke="#d7cbb9" strokeWidth="1.1" filter="url(#atlas-soft)" />
+              <path d="M-9 4 L-5.5 -46 L5.5 -46 L9 4 Z" fill="#fffdf7" stroke="#d7cbb9" strokeWidth="1.1" />
               <path d="M-8.4 -26 L8.4 -26 L8.9 -13 L-8.9 -13 Z" fill="#ef9b87" />
               <path d="M-6.6 -41 L6.6 -41 L7.1 -31 L-7.1 -31 Z" fill="#ef9b87" />
               <path d="M-3 4 L-3 -4 q 3 -3 6 0 L3 4 Z" fill="#cfc0aa" opacity={0.75} />
@@ -529,7 +659,7 @@ export function IslandAtlas() {
             <g {...spotProps('library', '藏书阁')}>
               <circle className="atlas-ring" r="40" fill="none" stroke="rgba(169,155,224,0.45)" strokeWidth="1.2" strokeDasharray="3 5" />
               <ellipse cx="0" cy="10" rx="30" ry="9" fill="rgba(88,132,110,0.16)" />
-              <rect x="-23" y="-16" width="46" height="26" rx="2.5" fill="#fdfaf3" stroke="#e0d3bd" strokeWidth="1" filter="url(#atlas-soft)" />
+              <rect x="-23" y="-16" width="46" height="26" rx="2.5" fill="#fdfaf3" stroke="#e0d3bd" strokeWidth="1" />
               <path d="M-28 -16 L0 -36 L28 -16 Z" fill="#b8a8e0" />
               <path d="M-28 -16 L0 -36 L28 -16 Z" fill="none" stroke="#a495d6" strokeWidth="1" />
               <rect x="-5.5" y="-3" width="11" height="13" rx="1.6" fill="#efe3cd" stroke="#e0d3bd" strokeWidth="0.6" />
@@ -551,7 +681,7 @@ export function IslandAtlas() {
             <g {...spotProps('stone', '岛心石碑')}>
               <circle className="atlas-ring" r="26" fill="none" stroke="rgba(120,160,150,0.4)" strokeWidth="1.1" strokeDasharray="3 5" />
               <ellipse cx="0" cy="13" rx="15" ry="5" fill="rgba(88,132,110,0.18)" />
-              <path d="M-8 13 L-6.5 -12 C -6.5 -18 6.5 -18 6.5 -12 L8 13 Z" fill="#e9ede8" stroke="#c6d1c6" strokeWidth="1.1" filter="url(#atlas-soft)" />
+              <path d="M-8 13 L-6.5 -12 C -6.5 -18 6.5 -18 6.5 -12 L8 13 Z" fill="#e9ede8" stroke="#c6d1c6" strokeWidth="1.1" />
               <path d="M-4 -7 h7 M-4 -3 h5.5 M-4 1 h6.5" stroke="rgba(120,150,140,0.5)" strokeWidth="1" strokeLinecap="round" />
               <ellipse cx="0" cy="-15" rx="6.5" ry="3" fill="#dfe6df" />
             </g>
@@ -660,51 +790,102 @@ export function IslandAtlas() {
 
           {/* 海面小舟 */}
           <g transform="translate(676,352) scale(0.95)" opacity="0.85">
-            <path d="M-15 0 q 15 8 30 0 Z" fill="#ffffff" stroke="#d9cfc0" strokeWidth="1" />
-            <path d="M0 -1 L0 -18 L10 -4 Z" fill="#faf3e4" stroke="#d9cfc0" strokeWidth="0.8" />
-            <path d="M0 -1 L0 -15 L-8 -4 Z" fill="#ffffff" stroke="#d9cfc0" strokeWidth="0.8" />
-            <path d="M-18 5 q 18 6 36 0" stroke="rgba(255,255,255,0.85)" strokeWidth="1.2" fill="none" />
+            <g className="atlas-boat">
+              <path d="M-15 0 q 15 8 30 0 Z" fill="#ffffff" stroke="#d9cfc0" strokeWidth="1" />
+              <path d="M0 -1 L0 -18 L10 -4 Z" fill="#faf3e4" stroke="#d9cfc0" strokeWidth="0.8" />
+              <path d="M0 -1 L0 -15 L-8 -4 Z" fill="#ffffff" stroke="#d9cfc0" strokeWidth="0.8" />
+              <path d="M-18 5 q 18 6 36 0" stroke="rgba(255,255,255,0.85)" strokeWidth="1.2" fill="none" />
+            </g>
           </g>
 
-          {/* 地图注记 */}
-          {SPOTS.map((s) => {
-            const on = active === s.id || hover === s.id
-            return (
-              <g key={s.id} transform={`translate(${s.lx},${s.ly})`} pointerEvents="none">
-                <circle
-                  cx={s.anchor === 'start' ? -7 : s.anchor === 'end' ? 7 : 0}
-                  cy="-4"
-                  r={on ? 2.5 : 1.7}
-                  fill={on ? '#3a7b8d' : 'rgba(95,114,128,0.55)'}
-                />
-                <text
-                  x="0"
-                  y="0"
-                  textAnchor={s.anchor}
-                  fontSize={on ? 14.5 : 13.5}
-                  fontWeight={on ? 600 : 500}
-                  fill={on ? '#1e2a33' : '#5f7280'}
-                  stroke="rgba(255,255,255,0.92)"
-                  strokeWidth="3.6"
-                  paintOrder="stroke"
-                  style={{ letterSpacing: '0.03em', transition: 'all .3s ease' }}
-                >
-                  {s.name}
-                </text>
-              </g>
-            )
-          })}
         </svg>
+              ),
+              // 只在换地点或换时刻时重建 SVG，悬停不再触发整棵树重渲染
+              [active, moment]
+            )}
 
-        <p className="px-5 pb-3 pt-0 text-[10px] tracking-wide text-ink-300">
+            {/* 地图注记：HTML 排版，比 SVG text 更清晰、也更轻 */}
+            <div className="pointer-events-none absolute inset-0">
+              {SPOTS.map((sp) => {
+                const on = active === sp.id || hover === sp.id
+                const left = ((sp.lx - VIEW.x) / VIEW.w) * 100
+                const top = ((sp.ly - VIEW.y) / VIEW.h) * 100
+                const align =
+                  sp.anchor === 'start'
+                    ? { transform: 'translate(0, -50%) scale(var(--inv, 1))', transformOrigin: 'left center' }
+                    : sp.anchor === 'end'
+                      ? { transform: 'translate(-100%, -50%) scale(var(--inv, 1))', transformOrigin: 'right center' }
+                      : { transform: 'translate(-50%, -50%) scale(var(--inv, 1))', transformOrigin: 'center' }
+                return (
+                  <button
+                    key={sp.id}
+                    onMouseEnter={() => setHover(sp.id)}
+                    onMouseLeave={() => setHover(null)}
+                    onFocus={() => setHover(sp.id)}
+                    onBlur={() => setHover(null)}
+                    onClick={() => pick(sp.id)}
+                    aria-pressed={active === sp.id}
+                    className={`pointer-events-auto absolute flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-[3px] text-[11px] font-medium backdrop-blur-[2px] transition-[background,color,box-shadow] duration-300 ${
+                      on
+                        ? 'z-20 bg-white/95 text-ink-900 shadow-[0_8px_18px_-12px_rgba(46,96,112,0.9)]'
+                        : 'bg-white/45 text-ink-500 hover:bg-white/85 hover:text-ink-900'
+                    }`}
+                    style={{ left: `${left}%`, top: `${top}%`, ...align }}
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full transition-colors"
+                      style={{ background: on ? '#3a7b8d' : 'rgba(95,114,128,0.4)' }}
+                    />
+                    {sp.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* 缩放控件 */}
+          <div className="absolute bottom-3 right-3 z-20 flex flex-col items-center gap-1 rounded-full border border-white/85 bg-white/75 p-1 backdrop-blur">
+            <button
+              onClick={() => zoomTo(zoom + 0.4)}
+              disabled={zoom >= MAX_ZOOM - 0.01}
+              className="atlas-zoom"
+              aria-label="放大地图"
+            >
+              +
+            </button>
+            <span className="tnum text-[9px] text-ink-400">{zoom.toFixed(1)}×</span>
+            <button
+              onClick={() => zoomTo(zoom - 0.4)}
+              disabled={zoom <= 1.01}
+              className="atlas-zoom"
+              aria-label="缩小地图"
+            >
+              −
+            </button>
+            {zoom > 1.02 && (
+              <button
+                onClick={() => zoomTo(1)}
+                className="atlas-zoom text-[9px]"
+                aria-label="回到全景"
+                title="回到全景"
+              >
+                1×
+              </button>
+            )}
+          </div>
+
+
+        </div>
+
+        <p className="px-5 pb-3 pt-2 text-[10px] tracking-wide text-ink-300">
           {MOMENTS.find((m) => m.id === moment)?.hint}
         </p>
       </div>
 
       {/* ── 地点面板 ── */}
-      <div className="relative flex flex-col overflow-hidden rounded-5xl border border-white/70 bg-white/55 p-5 shadow-soft backdrop-blur-md sm:p-6">
+      <div className="relative flex min-h-[30rem] flex-col overflow-hidden rounded-5xl border border-white/70 bg-white/55 p-5 shadow-soft backdrop-blur-md sm:p-6">
         <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-lav-100/60 blur-2xl" />
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="popLayout" initial={false}>
           <motion.div
             key={spot.id}
             initial={{ opacity: 0, y: 10 }}
@@ -809,7 +990,7 @@ export function IslandAtlas() {
               {spot.action === 'about' && (
                 <p className="text-[11.5px] leading-relaxed text-ink-600">
                   <span className="font-medium text-ink-900">隐私优先　</span>
-                  无账号、无服务端数据库，对话与情绪记录只写入浏览器 localStorage。
+                  本地账号、无服务端数据库，每个名字拥有独立命名空间，对话与情绪记录只写入浏览器 localStorage。
                 </p>
               )}
             </div>

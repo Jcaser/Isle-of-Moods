@@ -29,6 +29,12 @@ export type IconName =
   | 'alert'
   | 'compass'
   | 'feather'
+  | 'eye'
+  | 'eyeOff'
+  | 'lock'
+  | 'user'
+  | 'logout'
+  | 'mail'
 
 interface Props extends SVGProps<SVGSVGElement> {
   name: IconName
@@ -152,6 +158,46 @@ const PATHS: Record<IconName, JSX.Element> = {
     <>
       <circle cx="12" cy="12" r="9" />
       <path d="m15.6 8.4-2.1 5.1-5.1 2.1 2.1-5.1z" strokeLinejoin="round" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M2.2 12S5.6 5.6 12 5.6 21.8 12 21.8 12 18.4 18.4 12 18.4 2.2 12 2.2 12Z" />
+      <circle cx="12" cy="12" r="3.1" />
+    </>
+  ),
+  eyeOff: (
+    <>
+      <path d="M9.9 5.9A8.7 8.7 0 0 1 12 5.6c6.4 0 9.8 6.4 9.8 6.4a17 17 0 0 1-2.9 3.8" />
+      <path d="M6.4 6.9A17 17 0 0 0 2.2 12S5.6 18.4 12 18.4c1.6 0 3-.4 4.2-1" />
+      <path d="M10 10a2.9 2.9 0 0 0 4 4" />
+      <path d="M3.4 3.4l17.2 17.2" strokeLinecap="round" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect x="4.6" y="10.4" width="14.8" height="10.2" rx="2.6" />
+      <path d="M8.2 10.4V7.8a3.8 3.8 0 0 1 7.6 0v2.6" />
+      <path d="M12 14.6v2.2" strokeLinecap="round" />
+    </>
+  ),
+  user: (
+    <>
+      <circle cx="12" cy="8.2" r="3.8" />
+      <path d="M4.6 20.2c.8-3.6 3.8-5.6 7.4-5.6s6.6 2 7.4 5.6" strokeLinecap="round" />
+    </>
+  ),
+  logout: (
+    <>
+      <path d="M14.4 4.6H6.2a2 2 0 0 0-2 2v10.8a2 2 0 0 0 2 2h8.2" />
+      <path d="M16.4 8.4 20 12l-3.6 3.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 12h10" strokeLinecap="round" />
+    </>
+  ),
+  mail: (
+    <>
+      <rect x="3" y="5.4" width="18" height="13.2" rx="2.4" />
+      <path d="M3.8 6.6 12 12.6l8.2-6" strokeLinecap="round" strokeLinejoin="round" />
     </>
   ),
   feather: (

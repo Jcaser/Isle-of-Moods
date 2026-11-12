@@ -7,6 +7,9 @@ import { BreathingOverlay } from './components/BreathingOverlay'
 import { AssessmentModal } from './components/AssessmentModal'
 import { SettingsModal } from './components/SettingsModal'
 import { IntroModal } from './components/IntroModal'
+import { Gate } from './components/Gate'
+import { CommandPalette } from './components/CommandPalette'
+import { useAuthStore } from './store/useAuthStore'
 
 const Home = lazy(() => import('./pages/Home'))
 const Chat = lazy(() => import('./pages/Chat'))
@@ -28,32 +31,44 @@ function IslandLoader() {
 
 function App() {
   return (
-    <Layout>
-      <Suspense fallback={<IslandLoader />}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/library" element={<Library />} />
-          <Route path="/calm" element={<Calm />} />
-          <Route path="/play" element={<Play />} />
-          <Route path="/mood" element={<Mood />} />
-          <Route path="/harbor" element={<Harbor />} />
-          <Route path="/about" element={<About />} />
-          <Route path="*" element={<Home />} />
-        </Routes>
-      </Suspense>
+    <>
+      <Layout>
+        <Suspense fallback={<IslandLoader />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/library" element={<Library />} />
+            <Route path="/calm" element={<Calm />} />
+            <Route path="/play" element={<Play />} />
+            <Route path="/mood" element={<Mood />} />
+            <Route path="/harbor" element={<Harbor />} />
+            <Route path="/about" element={<About />} />
+            <Route path="*" element={<Home />} />
+          </Routes>
+        </Suspense>
+      </Layout>
+      {/* 全屏弹层挂在 Layout 之外：PageShell 的入场动画带 filter，
+          会让 position: fixed 相对它定位，弹层就会跟着页面滚动跑偏 */}
       <BreathingOverlay />
+      <CommandPalette />
       <AssessmentModal />
       <SettingsModal />
       <IntroModal />
-    </Layout>
+    </>
   )
+}
+
+function Root() {
+  const user = useAuthStore((s) => s.user)
+  // 没有岛主就先停在登录页；登岛后才挂载整个界面与本地数据
+  if (!user) return <Gate />
+  return <App />
 }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <App />
+      <Root />
     </BrowserRouter>
   </StrictMode>,
 )

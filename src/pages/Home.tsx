@@ -76,7 +76,7 @@ export default function Home() {
           <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] text-ink-400">
             <span className="flex items-center gap-1.5">
               <Icon name="shield" size={13} className="text-sea-400" />
-              无需注册 · 数据不出本机
+              本地账号 · 数据不出本机
             </span>
             <span className="flex items-center gap-1.5">
               <Icon name="book" size={13} className="text-sea-400" />

@@ -1,0 +1,28 @@
+import { chromium } from 'playwright'
+const B = 'http://127.0.0.1:4173'
+const b = await chromium.launch({ channel: 'msedge' })
+const ctx = await b.newContext({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 2 })
+const p = await ctx.newPage()
+const errs = []
+p.on('pageerror', (e) => errs.push(e.message))
+p.on('console', (m) => m.type() === 'error' && errs.push(m.text()))
+await p.goto(B + '/', { waitUntil: 'networkidle' })
+await p.evaluate(() => {
+  const now = Date.now()
+  localStorage.setItem('sereneisle.auth.users', JSON.stringify({ schema: 1, users: [{ id: 'u1', name: '林小屿', hue: 190, salt: 'x', hash: 'y', createdAt: now - 86400000 * 12, lastSeen: now }] }))
+  localStorage.setItem('sereneisle.auth.session', 'u1')
+  localStorage.setItem('sereneisle.v1.u_u1.intro-seen', 'true')
+})
+await p.reload({ waitUntil: 'networkidle' })
+await p.waitForTimeout(1200)
+await p.keyboard.press('Control+k')
+await p.waitForTimeout(600)
+await p.screenshot({ path: '.shots/v13-palette.png' })
+await p.keyboard.type('呼吸')
+await p.waitForTimeout(400)
+await p.screenshot({ path: '.shots/v13-palette-search.png' })
+await p.keyboard.press('Enter')
+await p.waitForTimeout(900)
+await p.screenshot({ path: '.shots/v13-palette-action.png' })
+console.log('errors:', errs)
+await b.close()

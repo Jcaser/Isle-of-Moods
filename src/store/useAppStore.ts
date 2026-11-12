@@ -47,6 +47,8 @@ interface AppState {
   setSettingsOpen: (v: boolean) => void
   markIntroSeen: () => void
   wipeAll: () => void
+  /** 切换岛主后，重新从本地存储载入这个人的数据 */
+  hydrate: () => void
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
@@ -129,6 +131,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   markIntroSeen: () => {
     save(STORAGE_KEYS.intro, true)
     set({ introSeen: true })
+  },
+
+  hydrate: () => {
+    const settings = { ...DEFAULT_SETTINGS, ...load<Partial<Settings>>(STORAGE_KEYS.settings, {}) }
+    set({
+      records: load<MoodRecord[]>(STORAGE_KEYS.mood, []),
+      assessments: load<AssessmentRecord[]>(STORAGE_KEYS.assessments, []),
+      messages: load<ChatMessage[]>(STORAGE_KEYS.chat, []),
+      settings,
+      introSeen: load<boolean>(STORAGE_KEYS.intro, false),
+      breathing: { open: false, pattern: '478' },
+      assessmentOpen: false,
+      settingsOpen: false,
+    })
   },
 
   wipeAll: () => {
