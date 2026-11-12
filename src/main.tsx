@@ -14,6 +14,7 @@ const Library = lazy(() => import('./pages/Library'))
 const Calm = lazy(() => import('./pages/Calm'))
 const Mood = lazy(() => import('./pages/Mood'))
 const Harbor = lazy(() => import('./pages/Harbor'))
+const Play = lazy(() => import('./pages/Play'))
 const About = lazy(() => import('./pages/About'))
 
 function IslandLoader() {
@@ -34,6 +35,7 @@ function App() {
           <Route path="/chat" element={<Chat />} />
           <Route path="/library" element={<Library />} />
           <Route path="/calm" element={<Calm />} />
+          <Route path="/play" element={<Play />} />
           <Route path="/mood" element={<Mood />} />
           <Route path="/harbor" element={<Harbor />} />
           <Route path="/about" element={<About />} />

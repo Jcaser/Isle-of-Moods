@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '../components/Icons'
+import { BookShelf } from '../components/BookShelf'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { CATEGORIES, KNOWLEDGE_DOCS, type KnowledgeDoc } from '../lib/knowledge'
@@ -61,6 +62,15 @@ export default function Library() {
           </div>
         }
       />
+
+      {/* 书架 */}
+      <section className="mb-6 rounded-5xl border border-white/70 bg-gradient-to-b from-white/55 to-white/25 px-3 py-4 backdrop-blur-sm sm:px-5">
+        <div className="mb-1 flex items-center justify-between px-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-sea-500">The Shelf</p>
+          <p className="text-[10.5px] text-ink-300">点书脊，直接翻开</p>
+        </div>
+        <BookShelf docs={KNOWLEDGE_DOCS} onOpen={(d) => setActive(d)} />
+      </section>
 
       {/* 检索条 */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

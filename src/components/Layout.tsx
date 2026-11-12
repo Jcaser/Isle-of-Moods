@@ -1,21 +1,27 @@
 import { motion } from 'framer-motion'
+import { useEffect, useRef } from 'react'
+import { applyMoment, loadMoment } from '../lib/moment'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAppStore } from '../store/useAppStore'
 import { Icon, type IconName } from './Icons'
 import { WaveBackground } from './WaveBackground'
+import { ParticleField } from './ParticleField'
+import { CursorGlow } from './CursorGlow'
+import { ScrollProgress } from './ScrollProgress'
 
 const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/', label: '岛屿', icon: 'home' },
   { to: '/chat', label: '岛主', icon: 'chat' },
   { to: '/library', label: '藏书阁', icon: 'book' },
   { to: '/calm', label: '潮汐', icon: 'wave' },
+  { to: '/play', label: '乐园', icon: 'sparkles' },
   { to: '/mood', label: '潮向', icon: 'chart' },
   { to: '/harbor', label: '避风港', icon: 'lifebuoy' },
 ]
 
 function Brand({ compact }: { compact?: boolean }) {
   return (
-    <NavLink to="/" className="group flex items-center gap-2.5 focus-ring rounded-2xl" aria-label="清绪之屿首页">
+    <NavLink to="/" className="group flex items-center gap-2.5 rounded-2xl focus-ring" aria-label="清绪之屿首页">
       <span className="relative block h-10 w-10 shrink-0">
         <span className="absolute inset-0 rounded-full bg-sea-200/40 blur-md transition group-hover:bg-sea-200/70" />
         <img
@@ -42,15 +48,15 @@ function Nav() {
 
   return (
     <header className="sticky top-0 z-40 px-3 pt-3 sm:px-6 sm:pt-5">
-      <div className="glass mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 rounded-full px-3 sm:h-16 sm:px-5">
+      <div className="glass mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 rounded-full px-3 sm:h-16 sm:px-4">
         <Brand />
-        <nav className="hidden items-center gap-1 md:flex" aria-label="主导航">
+        <nav className="hidden items-center gap-0.5 md:flex" aria-label="主导航">
           {NAV.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `relative rounded-full px-3.5 py-2 text-[13px] font-medium transition-colors ${
+                `relative rounded-full px-2.5 py-2 text-[12.5px] font-medium transition-colors lg:px-3.5 lg:text-[13px] ${
                   isActive ? 'text-ink-900' : 'text-ink-500 hover:text-ink-900'
                 }`
               }
@@ -73,7 +79,7 @@ function Nav() {
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setSettingsOpen(true)}
-            className={`hidden items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium transition sm:flex ${
+            className={`hidden items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium transition lg:flex ${
               hasKey ? 'bg-sea-50/80 text-sea-600' : 'bg-sand-100 text-ink-500 hover:bg-sand-200'
             }`}
             aria-label="打开设置"
@@ -96,22 +102,19 @@ function Nav() {
 
 function MobileTabs() {
   return (
-    <nav
-      className="fixed inset-x-3 bottom-3 z-40 md:hidden"
-      aria-label="移动端导航"
-    >
-      <div className="glass-strong flex items-center justify-between rounded-full px-1.5 py-1.5">
+    <nav className="fixed inset-x-2.5 bottom-3 z-40 md:hidden" aria-label="移动端导航">
+      <div className="glass-strong flex items-center justify-between rounded-full px-1 py-1.5">
         {NAV.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
-              `flex flex-1 flex-col items-center gap-0.5 rounded-full py-1.5 text-[10px] font-medium transition ${
+              `flex flex-1 flex-col items-center gap-0.5 rounded-full py-1.5 text-[9.5px] font-medium transition ${
                 isActive ? 'bg-white/90 text-sea-600 shadow-[0_6px_16px_-12px_rgba(46,96,112,0.7)]' : 'text-ink-500'
               }`
             }
           >
-            <Icon name={item.icon} size={17} />
+            <Icon name={item.icon} size={16} />
             {item.label}
           </NavLink>
         ))}
@@ -122,7 +125,7 @@ function MobileTabs() {
 
 function Footer() {
   return (
-    <footer className="mt-16 border-t border-white/60 bg-white/35 px-4 pb-28 pt-10 backdrop-blur-sm sm:px-8 md:pb-12">
+    <footer className="relative z-10 mt-16 border-t border-white/60 bg-white/35 px-4 pb-28 pt-10 backdrop-blur-sm sm:px-8 md:pb-12">
       <div className="mx-auto max-w-6xl">
         <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
           <div className="max-w-md">
@@ -174,12 +177,45 @@ function Footer() {
   )
 }
 
+/** 路由切换时重放入场动画，但不重挂载页面（避免丢失对话与表单状态） */
+function PageShell({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation()
+  const ref = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.animation = 'none'
+    void el.offsetWidth
+    el.style.animation = 'pageIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both'
+  }, [pathname])
+
+  return (
+    <div ref={ref} className="flex-1">
+      {children}
+    </div>
+  )
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation()
   const isChat = pathname.startsWith('/chat')
 
+  // 启动时恢复上次选择的岛屿时刻（清晨 / 正午 / 黄昏 / 夜航）
+  useEffect(() => {
+    applyMoment(loadMoment())
+  }, [])
+
   return (
     <div className="flex min-h-screen flex-col">
+      <div className="aurora" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
+      <ParticleField />
+      <CursorGlow />
+      <ScrollProgress />
       {!isChat && <WaveBackground />}
       <a
         href="#main"
@@ -188,8 +224,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         跳到主内容
       </a>
       <Nav />
-      <main id="main" className={isChat ? 'flex-1' : 'flex-1'}>
-        {children}
+      <main id="main" className="relative z-10 flex-1">
+        <PageShell>{children}</PageShell>
       </main>
       {!isChat && <Footer />}
       {!isChat && <MobileTabs />}

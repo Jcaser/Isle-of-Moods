@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon } from '../components/Icons'
 import { PageHeader } from '../components/PageHeader'
+import { SafetyPlan } from '../components/SafetyPlan'
 import { CRISIS_RESOURCES, SAFETY_STEPS } from '../lib/crisis'
 import { useAppStore } from '../store/useAppStore'
 
@@ -193,6 +194,8 @@ export default function Harbor() {
       </div>
 
       {/* 求助流程 */}
+      <SafetyPlan />
+
       <section className="mt-4 rounded-4xl border border-white/70 bg-white/50 p-5 sm:p-6">
         <h2 className="font-display text-[15px] font-semibold tracking-tight text-ink-900">第一次求助，可以这样开始</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">

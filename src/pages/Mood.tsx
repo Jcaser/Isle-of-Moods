@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { Icon } from '../components/Icons'
 import { MoodCheckIn } from '../components/MoodCheckIn'
 import { MoodChart } from '../components/MoodChart'
+import { MoodHeatmap } from '../components/MoodHeatmap'
 import { PageHeader } from '../components/PageHeader'
 import { LEVEL_META } from '../lib/assessment'
 import { MOOD_META, buildSeries, dayKey, insightOf, summarize } from '../lib/mood'
@@ -85,6 +86,10 @@ export default function Mood() {
             <p className={`mt-1 text-[10.5px] ${s.tone}`}>{s.hint}</p>
           </motion.div>
         ))}
+      </div>
+
+      <div className="mt-4">
+        <MoodHeatmap />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">

@@ -20,9 +20,13 @@
 | --- | --- |
 | ![潮汐](docs/screenshots/calm.png) | ![潮向](docs/screenshots/mood.png) |
 
-| 屿藏书阁 | 端侧生成壁纸 |
+| 屿藏书阁（书架） | 端侧生成壁纸 |
 | --- | --- |
-| ![藏书阁](docs/screenshots/library.png) | ![壁纸](docs/screenshots/wallpaper.png) |
+| ![藏书阁](docs/screenshots/shelf.png) | ![壁纸](docs/screenshots/wallpaper.png) |
+
+| 岛屿全景地图 | 屿乐园 · 潮汐泡泡 |
+| --- | --- |
+| ![地图](docs/screenshots/atlas.png) | ![乐园](docs/screenshots/play.png) |
 
 ---
 
@@ -34,7 +38,15 @@
 | **屿藏书阁（RAG）** | 12 篇自建条目（CBT 认知模型、认知扭曲、思维记录表、4-7-8 呼吸、睡眠卫生、间隔重复、拖延、自我关怀、求助信号等），切分为 30+ 检索片段。答案标注 `[1][2]` 引用，可展开查看原文出处，抑制模型幻觉。 |
 | **潮汐疗愈（多模态）** | 4-7-8 / 箱式 / 共振三种呼吸节奏，配合球体缩放、潮汐环与提示音；Web Speech API 正念语音（逐句高亮，可换音色、调语速）；Canvas 程序化生成 1080×1440 海岛壁纸并导出 PNG。 |
 | **情绪潮向** | 30 秒情绪打卡（1–5 分 + 影响因素标签 + 备注）、7/30 天趋势图、情绪分布、连续记录天数、洞察提示、GAD-7 自评历史。 |
+| **屿乐园（解压小游戏）** | 四个 Canvas 小游戏：潮汐泡泡（点击爆开的粒子反馈）、沙岸拾贝（刮开沙层找贝壳与寄语）、打水漂（蓄力抛掷 + 物理弹跳 + 涟漪）、星光许愿（在夜空点亮一颗星并写下一句话）。全部本地运行，音效由 WebAudio 实时合成，玩完可一键把当下情绪写入潮向。 |
 | **避风港（危机干预）** | 关键词分级识别（输入与模型输出双通道），命中即置顶求助卡片；提供 12356（24h）、北京心理危机干预中心、120/110、校内心理中心等真实渠道，并给出"此刻需要什么"的分支行动。 |
+
+### 交互与视觉
+
+- **岛屿全景图**：首页不再是一排跳转卡片，而是一张可点选的岛屿鸟瞰图。七处地点各有独立内容，点一下先在右侧展开"这里有什么"，再决定要不要进去。
+- **岛屿时刻**：清晨 / 正午 / 黄昏 / 夜航四套天空色相，一键切换全站氛围（只换色相不压暗，保证正文对比度）。
+- **海萤粒子场**：Canvas 绘制的上浮光点，指针靠近会被轻轻推开并变亮，点击生成涟漪。
+- **微交互**：滚动进度、路由入场、卡片 3D 倾斜与眩光、渐变描边玻璃、书脊抽书、日历热力图悬停。
 
 ### 免 Key 也能演示
 
@@ -172,9 +184,10 @@ serene-isle/
 │  ├─ cutout.py              # 图标抠图脚本（容差洪泛 + 最大连通域 + 形态学腐蚀）
 │  └─ mock-llm.mjs           # 本地 OpenAI 兼容 Mock，用于验证流式与工具调用
 ├─ src/
-│  ├─ components/            # Layout / Modal / MoodCheckIn / MoodChart / 呼吸引导 / 量表 / 设置 …
-│  ├─ pages/                 # Home / Chat / Library / Calm / Mood / Harbor / About
-│  ├─ lib/                   # agent / llm / tools / rag / knowledge / crisis / tts / wallpaper …
+│  ├─ components/            # Layout / IslandAtlas / MoodHeatmap / BookShelf / SafetyPlan …
+│  │  └─ games/              # Bubbles / ShellHunt / Skipping / StarWish（Canvas 小游戏）
+│  ├─ pages/                 # Home / Chat / Library / Calm / Play / Mood / Harbor / About
+│  ├─ lib/                   # agent / llm / tools / rag / crisis / tts / wallpaper / moment / sfx / canvas
 │  ├─ store/useAppStore.ts   # Zustand 单一状态源
 │  ├─ index.css              # 设计令牌与组件层
 │  └─ main.tsx               # 路由与全局弹层
