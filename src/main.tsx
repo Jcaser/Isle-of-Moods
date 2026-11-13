@@ -8,6 +8,7 @@ import { AssessmentModal } from './components/AssessmentModal'
 import { SettingsModal } from './components/SettingsModal'
 import { IntroModal } from './components/IntroModal'
 import { Gate } from './components/Gate'
+import { AmbientPlayer } from './components/AmbientPlayer'
 import { CommandPalette } from './components/CommandPalette'
 import { useAuthStore } from './store/useAuthStore'
 
@@ -61,8 +62,13 @@ function App() {
 function Root() {
   const user = useAuthStore((s) => s.user)
   // 没有岛主就先停在登录页；登岛后才挂载整个界面与本地数据
-  if (!user) return <Gate />
-  return <App />
+  return (
+    <>
+      {!user ? <Gate /> : <App />}
+      {/* 背景乐挂在登录页之外，所以每个页面都听得到 */}
+      <AmbientPlayer placement={user ? 'dock' : 'top'} />
+    </>
+  )
 }
 
 createRoot(document.getElementById('root')!).render(
