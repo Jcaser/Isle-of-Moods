@@ -6,7 +6,7 @@
  * 用同一套检索结果 + 规则化共情模板作答，保证 Demo 与离线演示可用。
  */
 
-import { streamChat, type ApiMessage, type LLMConfig } from './llm'
+import { QUOTA_EXHAUSTED, LlmError, isProxy, streamChat, type ApiMessage, type LLMConfig } from './llm'
 import { TOOL_SCHEMAS, TOOL_LABELS, runTool, type ToolContext } from './tools'
 import { buildContextBlock, retrieve } from './rag'
 import { CRISIS_SYSTEM_NOTE, detectRisk } from './crisis'
@@ -22,6 +22,7 @@ export type AgentEvent =
   | { type: 'citations'; items: Citation[] }
   | { type: 'risk'; level: RiskLevel }
   | { type: 'error'; message: string }
+  | { type: 'quota_exhausted'; message: string }
   | { type: 'done'; content: string }
 
 const PERSONA = `你叫岛主，是「情绪之屿」（SereneIsle）这座心灵小岛的驻岛心理咨询师。
@@ -57,6 +58,7 @@ const PERSONA = `你叫岛主，是「情绪之屿」（SereneIsle）这座心�
 【输出风格】
 - 段落简短，留白舒服，适合网页阅读；语气稳定平静，文字干净，少用表情符号。
 - 不要长篇大论堆砌理论，整段回复尽量控制在 260 字内，分点最多 3 条。
+- 一次只推进一小步：不要一口气给三套方案，也不要列完所有可能性。用户要细节时再展开。
 - 称呼：用「你」，自然对话，不用刻意叫「来访者」。
 - 你是岛主，可以轻轻呼应「这座小岛」的意象，但不要频繁堆砌，点到为止。
 - 如果用户只是随便打招呼，可以自然开启：「欢迎来到情绪之屿，我是岛主。你可以在这里说说心里积压的感受，我在这里听着。」
@@ -108,11 +110,22 @@ function buildSystem(opts: {
   return parts.join('\n\n')
 }
 
+/**
+ * 只带最近 4 轮（8 条）对话进入上下文，单条超过 500 字截断。
+ * 目的是控制 token 消耗：每一轮重发都会重复计费，历史越长越贵。
+ */
+export const MAX_HISTORY_TURNS = 4
+const MAX_MESSAGE_CHARS = 500
+
 function toApiHistory(history: ChatMessage[]): ApiMessage[] {
   return history
     .filter((m) => m.content.trim())
-    .slice(-10)
-    .map((m) => ({ role: m.role, content: m.content }))
+    .slice(-MAX_HISTORY_TURNS * 2)
+    .map((m) => ({
+      role: m.role,
+      content:
+        m.content.length > MAX_MESSAGE_CHARS ? `${m.content.slice(0, MAX_MESSAGE_CHARS)}…` : m.content,
+    }))
 }
 
 export interface RunAgentOptions {
@@ -123,11 +136,13 @@ export interface RunAgentOptions {
   assessments: AssessmentRecord[]
   ctx: ToolContext
   signal: AbortSignal
+  /** 云端是否可用：由服务端健康检查决定，额度用尽时为 false */
+  cloud: boolean
   onEvent: (e: AgentEvent) => void
 }
 
 export async function runAgent(opts: RunAgentOptions): Promise<void> {
-  const { userText, history, settings, records, assessments, ctx, signal, onEvent } = opts
+  const { userText, history, settings, records, assessments, ctx, signal, cloud, onEvent } = opts
 
   const citations = retrieve(userText, 3)
   const risk = detectRisk(userText)
@@ -141,7 +156,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
     temperature: settings.temperature,
   }
 
-  if (!settings.apiKey) {
+  // 云端可用 = 服务端代理已就绪（cloud），或用户在设置里自填了 Key 且走直连
+  const canUseCloud = cloud || (Boolean(settings.apiKey) && !isProxy(settings.baseUrl))
+
+  if (!canUseCloud) {
     onEvent({ type: 'mode', mode: 'local' })
     const text = offlineRespond(userText, citations, risk.level)
     await typeOut(text, onEvent, signal)
@@ -161,7 +179,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
   ]
 
   let full = ''
-  const MAX_STEPS = 4
+  // 最多 3 步：每多一步都要把整段上下文重发一次，都是在烧额度
+  const MAX_STEPS = 3
 
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
@@ -215,6 +234,21 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
     onEvent({ type: 'done', content: full })
   } catch (e) {
     if (signal.aborted) return
+
+    // 额度用尽：立即停止，不再重试、不再偷偷重发请求，并如实告知
+    if (e instanceof LlmError && e.code === QUOTA_EXHAUSTED) {
+      const message = e.message || '免费额度已用完，岛主已停止调用云端模型。'
+      onEvent({ type: 'quota_exhausted', message })
+      onEvent({ type: 'mode', mode: 'local' })
+      if (!full.trim()) {
+        const text = `${message}\n\n我不再调用大模型了。你仍然可以继续跟我说说，我用本地的知识陪你聊；也可以到「岛屿设置」里查看用量。`
+        full = text
+        onEvent({ type: 'delta', text })
+      }
+      onEvent({ type: 'done', content: full })
+      return
+    }
+
     const message = (e as Error).message || '对话中断'
     onEvent({ type: 'error', message })
     onEvent({ type: 'mode', mode: 'local' })

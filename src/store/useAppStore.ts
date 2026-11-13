@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { STORAGE_KEYS, clearAll, load, save } from '../lib/storage'
+import { fetchAiStatus, type AiStatus } from '../lib/ai'
 import type {
   AssessmentRecord,
   ChatMessage,
@@ -9,13 +10,19 @@ import type {
 } from '../lib/types'
 
 /**
- * 默认配置：优先读取构建期环境变量（见 .env.example），
- * 其次使用内置默认值。用户也可在界面的「岛屿设置」中随时覆盖。
- * 注意：VITE_ 前缀的变量会被打包进静态产物，公开部署时不要把真实 Key 写进 .env。
+ * 默认配置
+ *
+ * 默认走本机 Node 代理（server/proxy.mjs）：baseUrl 写成相对路径 `/api`，
+ * 浏览器不持有任何密钥，Key 只存在于服务端的环境变量里。
+ * 若想临时直连某个模型服务，可在「岛屿设置」里改成完整地址并填自己的 Key。
+ *
+ * 注意：VITE_ 前缀的变量会被打包进静态产物，因此不要用它放真实 Key。
  */
+export const PROXY_BASE_URL = '/api'
+
 export const DEFAULT_SETTINGS: Settings = {
-  baseUrl: import.meta.env.VITE_LLM_BASE_URL || 'https://api.deepseek.com/v1',
-  model: import.meta.env.VITE_LLM_MODEL || 'deepseek-chat',
+  baseUrl: import.meta.env.VITE_LLM_BASE_URL || PROXY_BASE_URL,
+  model: import.meta.env.VITE_LLM_MODEL || '',
   apiKey: import.meta.env.VITE_LLM_API_KEY || '',
   temperature: 0.7,
   voiceURI: '',
@@ -23,11 +30,19 @@ export const DEFAULT_SETTINGS: Settings = {
   pitch: 1,
 }
 
+/** 旧版本存过「DeepSeek 默认地址 + 空 Key」的配置，迁移到代理模式，避免用户莫名其妙掉回本地模式 */
+function migrateSettings(stored: Partial<Settings>): Partial<Settings> {
+  const isOldDefault = !stored.apiKey && (!stored.baseUrl || stored.baseUrl.includes('api.deepseek.com'))
+  return isOldDefault ? { ...stored, baseUrl: DEFAULT_SETTINGS.baseUrl, model: DEFAULT_SETTINGS.model } : stored
+}
+
 interface AppState {
   records: MoodRecord[]
   assessments: AssessmentRecord[]
   messages: ChatMessage[]
   settings: Settings
+  /** 服务端 AI 状态（是否连上、模型、额度）；null 表示代理没起来 */
+  aiStatus: AiStatus | null
   introSeen: boolean
   breathing: { open: boolean; pattern: '478' | 'box' | 'coherent' }
   assessmentOpen: boolean
@@ -41,6 +56,8 @@ interface AppState {
   setMessages: (m: ChatMessage[]) => void
   clearChat: () => void
   updateSettings: (patch: Partial<Settings>) => void
+  refreshAi: () => Promise<AiStatus | null>
+  setAiStatus: (s: AiStatus | null) => void
   openBreathing: (pattern?: '478' | 'box' | 'coherent') => void
   closeBreathing: () => void
   setAssessmentOpen: (v: boolean) => void
@@ -56,13 +73,14 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 const initialRecords = load<MoodRecord[]>(STORAGE_KEYS.mood, [])
 const initialAssessments = load<AssessmentRecord[]>(STORAGE_KEYS.assessments, [])
 const initialMessages = load<ChatMessage[]>(STORAGE_KEYS.chat, [])
-const initialSettings = { ...DEFAULT_SETTINGS, ...load<Partial<Settings>>(STORAGE_KEYS.settings, {}) }
+const initialSettings = { ...DEFAULT_SETTINGS, ...migrateSettings(load<Partial<Settings>>(STORAGE_KEYS.settings, {})) }
 
 export const useAppStore = create<AppState>((set, get) => ({
   records: initialRecords,
   assessments: initialAssessments,
   messages: initialMessages,
   settings: initialSettings,
+  aiStatus: null,
   introSeen: load<boolean>(STORAGE_KEYS.intro, false),
   breathing: { open: false, pattern: '478' },
   assessmentOpen: false,
@@ -123,6 +141,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ settings })
   },
 
+  refreshAi: async () => {
+    const status = await fetchAiStatus()
+    set({ aiStatus: status })
+    return status
+  },
+
+  setAiStatus: (s) => set({ aiStatus: s }),
+
   openBreathing: (pattern = '478') => set({ breathing: { open: true, pattern } }),
   closeBreathing: () => set((s) => ({ breathing: { ...s.breathing, open: false } })),
   setAssessmentOpen: (v) => set({ assessmentOpen: v }),
@@ -134,7 +160,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   hydrate: () => {
-    const settings = { ...DEFAULT_SETTINGS, ...load<Partial<Settings>>(STORAGE_KEYS.settings, {}) }
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      ...migrateSettings(load<Partial<Settings>>(STORAGE_KEYS.settings, {})),
+    }
     set({
       records: load<MoodRecord[]>(STORAGE_KEYS.mood, []),
       assessments: load<AssessmentRecord[]>(STORAGE_KEYS.assessments, []),

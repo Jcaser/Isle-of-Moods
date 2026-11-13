@@ -5,10 +5,14 @@
   "type": "module",
   "description": "SereneIsle 清绪之屿 — 考试焦虑自助调节平台",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
+    "dev:vite": "vite",
+    "server": "node server/proxy.mjs",
+    "demo": "npm run build && node server/proxy.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ark:models": "node scripts/ark-models.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",

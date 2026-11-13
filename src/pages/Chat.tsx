@@ -4,6 +4,8 @@ import ReactMarkdown from 'react-markdown'
 import { Link, useSearchParams } from 'react-router-dom'
 import remarkGfm from 'remark-gfm'
 import { runAgent } from '../lib/agent'
+import { aiExhausted, aiReady, formatTokens } from '../lib/ai'
+import { isProxy } from '../lib/llm'
 import { summarize } from '../lib/mood'
 import { TOOL_LABELS } from '../lib/tools'
 import type { ChatMessage, Citation, RiskLevel, ToolTraceItem } from '../lib/types'
@@ -27,6 +29,8 @@ interface LiveState {
   risk: RiskLevel
   mode: 'cloud' | 'local'
   error?: string
+  /** 额度用尽的提示：出现即代表云端调用已被强制停止 */
+  quota?: string
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10)
@@ -175,6 +179,8 @@ export default function Chat() {
   const addMessage = useAppStore((s) => s.addMessage)
   const clearChat = useAppStore((s) => s.clearChat)
   const settings = useAppStore((s) => s.settings)
+  const aiStatus = useAppStore((s) => s.aiStatus)
+  const refreshAi = useAppStore((s) => s.refreshAi)
   const records = useAppStore((s) => s.records)
   const assessments = useAppStore((s) => s.assessments)
   const addMood = useAppStore((s) => s.addMood)
@@ -193,7 +199,7 @@ export default function Chat() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const pendingContent = useRef('')
-  const metaRef = useRef<{ trace: ToolTraceItem[]; citations: Citation[]; risk: RiskLevel }>({
+  const metaRef = useRef<{ trace: ToolTraceItem[]; citations: Citation[]; risk: RiskLevel; quota?: string }>({
     trace: [],
     citations: [],
     risk: 'none',
@@ -202,6 +208,22 @@ export default function Chat() {
 
   const streaming = live !== null
   const summary = useMemo(() => summarize(records, 7), [records])
+
+  // 云端是否在线：服务端代理就绪（Key 在服务端），或用户自填 Key 直连
+  const cloudNow = aiReady(aiStatus) || (Boolean(settings.apiKey) && !isProxy(settings.baseUrl))
+  const exhausted = aiExhausted(aiStatus)
+
+  // 进页面时问一次服务端：有没有配好 Key、额度还剩多少
+  useEffect(() => {
+    void refreshAi()
+  }, [refreshAi])
+
+  // 代理没起来时不做无意义轮询；有状态后每 45 秒刷新一次用量
+  useEffect(() => {
+    if (!aiStatus) return
+    const timer = window.setInterval(() => void refreshAi(), 45_000)
+    return () => window.clearInterval(timer)
+  }, [aiStatus, refreshAi])
 
   const scrollToBottom = useCallback((smooth = true) => {
     bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' })
@@ -233,12 +255,17 @@ export default function Chat() {
       setShowMood(false)
       if (taRef.current) taRef.current.style.height = 'auto'
 
+      // 发之前确认一次服务端状态：是否配好 Key、额度是否还有余
+      let status = useAppStore.getState().aiStatus
+      if (!status) status = await refreshAi()
+      const cloud = aiReady(status) || (Boolean(settings.apiKey) && !isProxy(settings.baseUrl))
+
       const controller = new AbortController()
       abortRef.current = controller
       pendingContent.current = ''
       metaRef.current = { trace: [], citations: [], risk: 'none' }
       abortedRef.current = false
-      setLive({ content: '', trace: [], citations: [], risk: 'none', mode: settings.apiKey ? 'cloud' : 'local' })
+      setLive({ content: '', trace: [], citations: [], risk: 'none', mode: cloud ? 'cloud' : 'local' })
 
       await runAgent({
         userText: text,
@@ -255,9 +282,14 @@ export default function Chat() {
           navigate: () => {},
         },
         signal: controller.signal,
+        cloud,
         onEvent: (ev) => {
           if (ev.type === 'citations') metaRef.current.citations = ev.items
           if (ev.type === 'risk') metaRef.current.risk = ev.level
+          if (ev.type === 'quota_exhausted') {
+            metaRef.current.quota = ev.message
+            void refreshAi()
+          }
           if (ev.type === 'tool_start') {
             metaRef.current.trace = [
               ...metaRef.current.trace,
@@ -293,6 +325,8 @@ export default function Chat() {
                 return { ...base, trace: metaRef.current.trace }
               case 'tool_end':
                 return { ...base, trace: metaRef.current.trace }
+              case 'quota_exhausted':
+                return { ...base, quota: ev.message }
               case 'error':
                 return { ...base, error: ev.message }
               case 'done':
@@ -320,14 +354,16 @@ export default function Chat() {
           trace: metaRef.current.trace,
           citations: metaRef.current.citations,
           risk: metaRef.current.risk,
-          offline: !settings.apiKey,
+          offline: !cloud,
         })
       }
+      // 用完一次就同步一次用量，横幅上的数字才是真的
+      void refreshAi()
       setLive(null)
       abortRef.current = null
       pendingContent.current = ''
     },
-    [input, streaming, settings, addMessage, openBreathing, addMood, setAssessmentOpen]
+    [input, streaming, settings, addMessage, openBreathing, addMood, setAssessmentOpen, refreshAi]
   )
 
   // 用最新 live 状态补全落库信息
@@ -349,7 +385,7 @@ export default function Chat() {
         trace: metaRef.current.trace,
         citations: metaRef.current.citations,
         risk: metaRef.current.risk,
-        offline: !settings.apiKey,
+        offline: !cloudNow,
       })
     }
     setLive(null)
@@ -398,7 +434,7 @@ export default function Chat() {
             <div>
               <p className="font-display text-[14px] font-semibold leading-none tracking-tight text-ink-900">岛主 · 驻岛咨询师</p>
               <p className="mt-1 text-[10px] text-ink-400">
-                {streaming ? '正在陪你想…' : settings.apiKey ? 'AI 已连接 · 引用可追溯' : '本地知识模式'}
+                {streaming ? '正在陪你想…' : exhausted ? '额度已用完 · 本地模式' : cloudNow ? 'AI 已连接 · 引用可追溯' : '本地知识模式'}
               </p>
             </div>
           </div>
@@ -535,6 +571,30 @@ export default function Chat() {
 
           {/* 输入区 */}
           <div className="border-t border-white/60 bg-white/55 px-3 pb-3 pt-3 backdrop-blur-xl sm:px-6">
+            {aiStatus && (
+              <div className="mx-auto mb-2 w-full max-w-3xl">
+                {exhausted ? (
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-2xl border border-coral-300/40 bg-coral-300/10 px-3 py-2 text-[11px] leading-relaxed text-coral-500">
+                    <Icon name="alert" size={13} />
+                    <span className="font-semibold">免费额度已用完，已停止调用大模型。</span>
+                    <span className="text-ink-500">
+                      共用了 {formatTokens(aiStatus.quota.used)} tokens。现在以本地知识模式陪你，不产生任何费用。
+                    </span>
+                    <button
+                      onClick={() => setSettingsOpen(true)}
+                      className="underline underline-offset-2 hover:text-coral-600"
+                    >
+                      查看用量
+                    </button>
+                  </div>
+                ) : aiStatus.quota.ratio >= 0.8 ? (
+                  <div className="flex items-center gap-1.5 rounded-2xl border border-[#e5c9a3]/50 bg-[#f6e7d2]/50 px-3 py-1.5 text-[10.5px] text-[#a9762e]">
+                    <Icon name="alert" size={12} />
+                    额度快用完了：已用 {formatTokens(aiStatus.quota.used)} / {formatTokens(aiStatus.quota.budget)} tokens
+                  </div>
+                ) : null}
+              </div>
+            )}
             <div className="mx-auto w-full max-w-3xl">
               <div className="flex items-end gap-2 rounded-3xl border border-white/80 bg-white/80 p-2 shadow-[0_12px_30px_-22px_rgba(46,96,112,0.5)]">
                 <textarea
@@ -652,6 +712,11 @@ function LiveRow({ live, onStop }: { live: LiveState; onStop: () => void }) {
             <div className="md-body caret">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{live.content}</ReactMarkdown>
             </div>
+          )}
+          {live.quota && (
+            <p className="mt-2 rounded-xl bg-coral-300/15 px-2.5 py-1.5 text-[10.5px] leading-relaxed text-coral-500">
+              {live.quota} 后续对话将改用本地知识模式，不再产生费用。
+            </p>
           )}
           {live.error && (
             <p className="mt-2 rounded-xl bg-coral-300/15 px-2.5 py-1.5 text-[10.5px] text-coral-500">

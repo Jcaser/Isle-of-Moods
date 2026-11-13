@@ -1,8 +1,11 @@
 /**
  * 大模型接入层：OpenAI 兼容协议 + SSE 流式解析 + Function Calling
  *
- * 支持任意 OpenAI 兼容端点（DeepSeek / 智谱 GLM / 通义 / Moonshot / OpenAI / 本地 vLLM 等），
- * 用户自带 Key，配置仅保存在浏览器本地，不经过任何第三方服务器。
+ * 两种运行方式：
+ *  A. 代理模式（推荐，默认）—— baseUrl 为相对路径 `/api`，请求经本地 Node 代理
+ *     （server/proxy.mjs）转发到火山方舟。密钥只存在服务端环境变量里，浏览器永远看不到。
+ *  B. 直连模式 —— baseUrl 为完整地址（https://api.deepseek.com/v1 等），用户自填 Key，
+ *     仅保存在浏览器本地。适合评审临时换模型，或本机跑 Ollama。
  */
 
 import type { ToolCall } from './types'
@@ -40,6 +43,25 @@ export interface StreamResult {
   finishReason: string
 }
 
+/** 带错误码的异常：上层据此决定是重试、降级，还是彻底停下 */
+export class LlmError extends Error {
+  code: string
+  constructor(message: string, code = 'LlmError') {
+    super(message)
+    this.name = 'LlmError'
+    this.code = code
+  }
+}
+
+/** baseUrl 是相对路径（/api）时，代表走同源本地代理，浏览器不需要也不应该持有 Key */
+export function isProxy(baseUrl: string): boolean {
+  const v = (baseUrl || '').trim()
+  return v.startsWith('/') && !v.startsWith('//')
+}
+
+/** 额度耗尽的错误码：一旦出现，前端应停止云端调用 */
+export const QUOTA_EXHAUSTED = 'QuotaExhausted'
+
 function endpoint(baseUrl: string): string {
   const base = baseUrl.trim().replace(/\/+$/, '')
   if (base.endsWith('/chat/completions')) return base
@@ -48,19 +70,26 @@ function endpoint(baseUrl: string): string {
   return `${base}/v1/chat/completions`
 }
 
-async function readError(res: Response): Promise<string> {
+async function readError(res: Response): Promise<{ message: string; code: string }> {
   let detail = ''
+  let code = ''
   try {
     const text = await res.text()
     try {
       const json = JSON.parse(text)
       detail = json?.error?.message ?? json?.message ?? text
+      code = json?.error?.code ?? ''
     } catch {
       detail = text
     }
   } catch {
     /* noop */
   }
+
+  if (code === QUOTA_EXHAUSTED) {
+    return { message: detail || '云端额度已用完，岛主已停止调用大模型。', code }
+  }
+
   const hint =
     res.status === 401
       ? 'API Key 无效或已过期'
@@ -70,10 +99,15 @@ async function readError(res: Response): Promise<string> {
           ? '接口地址或模型名不存在，请检查 Base URL 与模型名称'
           : res.status === 429
             ? '请求过于频繁或额度用尽'
-            : res.status >= 500
-              ? '服务端暂时不可用'
-              : '请求失败'
-  return `${hint}（HTTP ${res.status}）${detail ? `：${detail.slice(0, 200)}` : ''}`
+            : res.status === 503
+              ? '服务端尚未配置密钥'
+              : res.status >= 500
+                ? '服务端暂时不可用'
+                : '请求失败'
+  return {
+    message: `${hint}（HTTP ${res.status}）${detail ? `：${detail.slice(0, 200)}` : ''}`,
+    code: code || `Http${res.status}`,
+  }
 }
 
 /**
@@ -87,17 +121,20 @@ export async function streamChat(opts: {
   onDelta?: (text: string) => void
 }): Promise<StreamResult> {
   const { config, messages, tools, signal, onDelta } = opts
-  if (!config.apiKey) throw new Error('未配置 API Key')
+  const proxy = isProxy(config.baseUrl)
+  if (!config.apiKey && !proxy) throw new LlmError('未配置 API Key', 'NoApiKey')
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  // 代理模式下由服务端注入密钥；直连模式才把用户自己的 Key 放进请求头
+  if (config.apiKey && !proxy) headers.Authorization = `Bearer ${config.apiKey}`
 
   const res = await fetch(endpoint(config.baseUrl), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
+    headers,
     signal,
     body: JSON.stringify({
-      model: config.model,
+      // 留空表示「由服务端决定用哪个模型」
+      ...(config.model ? { model: config.model } : {}),
       messages,
       temperature: config.temperature,
       stream: true,
@@ -105,8 +142,11 @@ export async function streamChat(opts: {
     }),
   })
 
-  if (!res.ok) throw new Error(await readError(res))
-  if (!res.body) throw new Error('响应为空，请检查接口地址')
+  if (!res.ok) {
+    const err = await readError(res)
+    throw new LlmError(err.message, err.code)
+  }
+  if (!res.body) throw new LlmError('响应为空，请检查接口地址', 'EmptyBody')
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder('utf-8')
@@ -171,8 +211,17 @@ export async function streamChat(opts: {
   return { content, toolCalls, finishReason }
 }
 
-/** 连通性测试：拉取模型列表，失败则回退一次极短对话 */
+/** 连通性测试：代理模式读服务端健康检查，直连模式拉模型列表或发一次短对话 */
 export async function testConnection(config: LLMConfig): Promise<string> {
+  if (isProxy(config.baseUrl)) {
+    const res = await fetch('/api/health')
+    if (!res.ok) throw new Error(`本地代理未响应（HTTP ${res.status}），请先运行 npm run server`)
+    const json = await res.json()
+    if (!json?.hasKey) throw new Error('服务端未配置 ARK_API_KEY，请检查 .env.local')
+    if (json?.quota?.exhausted) throw new Error('额度已用完，已停止调用大模型')
+    return `连接成功 · ${json.model} · 已用 ${json.quota.used}/${json.quota.budget} tokens`
+  }
+
   const base = config.baseUrl.trim().replace(/\/+$/, '')
   const root = base.endsWith('/v1') ? base : `${base}/v1`
   try {

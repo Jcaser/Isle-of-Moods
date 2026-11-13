@@ -6,6 +6,13 @@ export default defineConfig({
   server: {
     port: 5173,
     host: '127.0.0.1',
+    // 开发时把 /api 转给本地代理（server/proxy.mjs），浏览器永远拿不到密钥
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     target: 'es2020',

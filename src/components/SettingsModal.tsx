@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
 import { testConnection } from '../lib/llm'
+import { formatTokens } from '../lib/ai'
 import { estimateUsage, STORAGE_KEYS, drop } from '../lib/storage'
 import { isTTSSupported, listVoices, type VoiceOption } from '../lib/tts'
 import { useAppStore } from '../store/useAppStore'
 import { Icon } from './Icons'
 import { Modal } from './Modal'
 
+/** 第一项是本项目默认方式：走服务端代理，浏览器不接触密钥 */
 const PRESETS = [
-  { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+  { name: '岛主默认 · 豆包（火山方舟）', baseUrl: '/api', model: '' },
+  { name: 'DeepSeek 直连', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
   { name: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
-  { name: '通义千问', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
   { name: '本地 Ollama', baseUrl: 'http://localhost:11434/v1', model: 'qwen2.5:7b' },
 ]
 
@@ -20,6 +22,8 @@ export function SettingsModal() {
   const setOpen = useAppStore((s) => s.setSettingsOpen)
   const settings = useAppStore((s) => s.settings)
   const update = useAppStore((s) => s.updateSettings)
+  const aiStatus = useAppStore((s) => s.aiStatus)
+  const refreshAi = useAppStore((s) => s.refreshAi)
   const wipeAll = useAppStore((s) => s.wipeAll)
   const clearChat = useAppStore((s) => s.clearChat)
 
@@ -28,12 +32,16 @@ export function SettingsModal() {
   const [confirmWipe, setConfirmWipe] = useState(false)
   const [usage, setUsage] = useState('—')
 
+  // 是否走服务端代理：相对路径即为代理模式
+  const viaProxy = settings.baseUrl.trim().startsWith('/')
+
   useEffect(() => {
     if (!open) return
     setUsage(estimateUsage())
     listVoices().then(setVoices)
     setTest({ status: 'idle', message: '' })
-  }, [open])
+    void refreshAi()
+  }, [open, refreshAi])
 
   const runTest = async () => {
     setTest({ status: 'loading', message: '正在连接…' })
@@ -80,17 +88,74 @@ export function SettingsModal() {
             <h3 className="text-[13px] font-semibold tracking-wide text-ink-900">AI 模型接入</h3>
             <span className="chip">
               <Icon name="shield" size={12} />
-              Key 仅存本机
+              {viaProxy ? '密钥只在服务端' : 'Key 仅存本机'}
             </span>
           </div>
+
+          {/* 服务端状态：模型、额度、限制 */}
+          {viaProxy && (
+            <div className="mt-3 rounded-2xl border border-white/70 bg-white/55 p-3.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11.5px] font-medium text-ink-800">
+                  {aiStatus?.hasKey ? (
+                    <>
+                      <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-sea-400 align-middle" />
+                      已连接 · {aiStatus.model}
+                    </>
+                  ) : (
+                    <span className="text-coral-500">服务端未配置密钥</span>
+                  )}
+                </p>
+                <span className="text-[10px] text-ink-300">火山方舟 · OpenAI 兼容</span>
+              </div>
+
+              {aiStatus && (
+                <>
+                  <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-ink-900/8">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        aiStatus.quota.exhausted
+                          ? 'bg-coral-400'
+                          : aiStatus.quota.ratio >= 0.8
+                            ? 'bg-[#d8a355]'
+                            : 'bg-sea-400'
+                      }`}
+                      style={{ width: `${Math.max(2, Math.min(100, aiStatus.quota.ratio * 100))}%` }}
+                    />
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between text-[10.5px] text-ink-400">
+                    <span>
+                      用量 {formatTokens(aiStatus.quota.used)} / {formatTokens(aiStatus.quota.budget)} tokens
+                      {aiStatus.quota.calls > 0 ? ` · ${aiStatus.quota.calls} 次调用` : ''}
+                    </span>
+                    <span className={aiStatus.quota.exhausted ? 'font-semibold text-coral-500' : ''}>
+                      {aiStatus.quota.exhausted ? '已达上限，已停止' : `剩 ${formatTokens(aiStatus.quota.remaining)}`}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-[10px] leading-relaxed text-ink-300">
+                    单次最多输出 {aiStatus.limits.maxOutputTokens} tokens，只带最近 {aiStatus.limits.maxHistoryTurns} 轮对话；
+                    深度思考已关闭，避免思考 token 成倍计费。触及上限后会自动停下，不会再产生费用。
+                  </p>
+                </>
+              )}
+
+              {!aiStatus && (
+                <p className="mt-1.5 text-[10.5px] leading-relaxed text-ink-400">
+                  没连上本地代理。请在另一个终端运行 <code className="rounded bg-ink-900/5 px-1">npm run server</code>，
+                  它会从 .env.local 读取密钥并转发请求。
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="mt-3 flex flex-wrap gap-1.5">
             {PRESETS.map((p) => (
               <button
                 key={p.name}
                 onClick={() => {
-                  update({ baseUrl: p.baseUrl, model: p.model })
+                  update({ baseUrl: p.baseUrl, model: p.model, apiKey: p.baseUrl === '/api' ? '' : settings.apiKey })
                   setTest({ status: 'idle', message: '' })
+                  if (p.baseUrl === '/api') void refreshAi()
                 }}
                 className={`rounded-full border px-3 py-1.5 text-[11.5px] transition ${
                   settings.baseUrl === p.baseUrl
@@ -113,7 +178,7 @@ export function SettingsModal() {
                 className="input py-2.5 text-[13px]"
                 value={settings.baseUrl}
                 onChange={(e) => update({ baseUrl: e.target.value })}
-                placeholder="https://api.deepseek.com/v1"
+                placeholder="/api（本地代理）"
                 spellCheck={false}
               />
             </div>
@@ -123,10 +188,11 @@ export function SettingsModal() {
               </label>
               <input
                 id="model"
-                className="input py-2.5 text-[13px]"
+                className="input py-2.5 text-[13px] disabled:opacity-60"
                 value={settings.model}
                 onChange={(e) => update({ model: e.target.value })}
-                placeholder="deepseek-chat"
+                placeholder={viaProxy ? '留空 = 服务端默认' : 'deepseek-chat'}
+                disabled={viaProxy}
                 spellCheck={false}
               />
             </div>
@@ -139,29 +205,38 @@ export function SettingsModal() {
             <input
               id="apiKey"
               type="password"
-              className="input py-2.5 font-mono text-[13px]"
+              className="input py-2.5 font-mono text-[13px] disabled:opacity-60"
               value={settings.apiKey}
               onChange={(e) => update({ apiKey: e.target.value })}
-              placeholder="sk-…（留空则使用本地知识模式）"
+              placeholder={viaProxy ? '由服务端 .env.local 提供，浏览器不接触' : 'sk-…（留空则使用本地知识模式）'}
               autoComplete="off"
               spellCheck={false}
+              disabled={viaProxy}
             />
             <p className="mt-1.5 text-[11px] leading-relaxed text-ink-300">
-              浏览器直连模型服务商，不经过本项目服务器。公共电脑上不建议保存 Key；评委可留空体验本地模式。
+              {viaProxy
+                ? '代理模式下密钥不出现在浏览器与任何前端产物中，也不进 Git；换模型或换 Key 只需改服务端 .env.local 并重启代理。'
+                : '直连模式下浏览器会直接请求服务商，Key 仅保存在本机浏览器。公共电脑上不建议保存，评委可留空体验本地模式。'}
             </p>
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button onClick={runTest} disabled={!settings.apiKey || test.status === 'loading'} className="btn-ghost disabled:opacity-40">
+            <button
+              onClick={runTest}
+              disabled={(!settings.apiKey && !viaProxy) || test.status === 'loading'}
+              className="btn-ghost disabled:opacity-40"
+            >
               {test.status === 'loading' ? '连接中…' : '测试连接'}
             </button>
-            <button
-              onClick={() => update({ apiKey: '' })}
-              className="btn-quiet text-[12px]"
-              aria-label="清除 API Key"
-            >
-              清除 Key
-            </button>
+            {!viaProxy && (
+              <button
+                onClick={() => update({ apiKey: '' })}
+                className="btn-quiet text-[12px]"
+                aria-label="清除 API Key"
+              >
+                清除 Key
+              </button>
+            )}
             {test.status !== 'idle' && (
               <span
                 className={`text-[11.5px] ${

@@ -48,7 +48,7 @@
 
 | 模块 | 说明 |
 | --- | --- |
-| **岛主对话（Agent）** | 「岛主」是情绪之屿的驻岛心理咨询师：温和稳定、专业克制，先接住情绪再梳理问题，不贴标签、不做诊断、不喊口号。用户倾诉后，它通过 Function Calling 调用工具：检索知识库、唤起呼吸引导、打开 GAD-7 自评、生成复习计划、写入情绪记录、读取情绪趋势。支持流式输出、思考过程可视化、多轮工具循环（最多 4 步）。 |
+| **岛主对话（Agent）** | 「岛主」是情绪之屿的驻岛心理咨询师：温和稳定、专业克制，先接住情绪再梳理问题，不贴标签、不做诊断、不喊口号。模型为火山方舟豆包 `doubao-seed-2-1-turbo`，经本地代理接入，支持流式输出与 Function Calling：检索知识库、唤起呼吸引导、打开 GAD-7 自评、生成复习计划、写入情绪记录、读取情绪趋势，多轮工具循环最多 3 步，上下文只带最近 4 轮，回答控制在 260 字内。 |
 | **分享小屋 · 书墙** | 一座由岛民自己写的书墙：写下心事、给封面做手账、读别人的书、在内页贴一张暖心便签。书墙按情绪类型（焦虑 / 疲惫 / 孤独 / 难过 / 迷茫 / 温暖 / 自责 / 期待）与发布时间筛选排序，可横向滑动、抽书翻开；「我的书架」存放自己写的书与收到的便签，每本书可随时在公开 / 私密之间切换。全部内容只存本地，不上传。 |
 | **分享小屋 · 知识库（RAG）** | 33 篇条目、切分为 103 段检索片段，覆盖十类议题：焦虑机制、CBT 认知、CBT 工具、放松技术、睡眠、学习策略、人际与家庭、情绪与低落、身体与症状、危机识别。其中 14 篇依据四本 CBT 经典（《认知行为疗法：基础与应用》《理智胜过情感》《伯恩斯新情绪疗法》）改写，篇末标注「参考依据」。答案标注 `[1][2]` 引用，可展开查看原文出处；检索带话题门控，问不相关的事不会硬凑引用。 |
 | **潮汐疗愈（多模态）** | 4-7-8 / 箱式 / 共振三种呼吸节奏：球体随呼吸真实胀缩（吸满 → 屏息微胀 → 呼气回落到最小），相位弧一圈圈用掉，Canvas 海面随潮位涨落，底部节奏条按"吸 / 屏 / 呼"的真实时长分段推进；另有提示音与中文语音引导、Web Speech API 正念语音、Canvas 程序化生成 1080×1440 海岛壁纸并导出 PNG。 |
@@ -84,7 +84,7 @@
 ## 技术架构
 
 ```
-┌──────────────────────────── 浏览器（纯静态部署） ────────────────────────────┐
+┌──────────────────────────── 浏览器（不含任何密钥） ──────────────────────────┐
 │                                                                              │
 │  React 18 + TypeScript + Vite                                                │
 │  ├─ 路由（懒加载分包）：首页 / 岛主 / 分享小屋 / 潮汐 / 潮向 / 避风港 / 关于      │
@@ -93,6 +93,7 @@
 │  │                                                                           │
 │  ├─ lib/agent.ts       Agent 编排：预检索 → 风险扫描 → 多轮工具循环 → 流式输出  │
 │  ├─ lib/llm.ts         OpenAI 兼容客户端：SSE 解析、tool_calls 增量拼装        │
+│  ├─ lib/ai.ts          服务端 AI 状态与额度（/api/health）                     │
 │  ├─ lib/tools.ts       6 个工具：schema 定义 + 执行 + 前端副作用               │
 │  ├─ lib/rag.ts         切块 / 中文二元组分词 / BM25 / 同义扩展 / 引用片段      │
 │  ├─ lib/knowledge.ts   私有知识库语料                                         │
@@ -102,10 +103,21 @@
 │  └─ lib/wallpaper.ts   Canvas 分层绘制（天空/日晕/云/海面/岛屿/灯塔）          │
 │                                                                              │
 └───────────────────────────────┬──────────────────────────────────────────────┘
-                                │ HTTPS（浏览器直连，用户自带 Key）
+                                │ POST /api/chat/completions（同源，无密钥）
                                 ▼
-                 任意 OpenAI 兼容端点（DeepSeek / 智谱 / 通义 / Ollama …）
+┌──────────────────── server/proxy.mjs（Node 内置模块） ──────────────────────┐
+│  读取 .env.local 里的 ARK_API_KEY → 注入 Authorization                        │
+│  关闭深度思考 · 限制 max_tokens · 限制上下文 · 每分钟限流 · token 账本熔断     │
+└───────────────────────────────┬──────────────────────────────────────────────┘
+                                │ HTTPS（官方开放 API）
+                                ▼
+                 火山方舟 doubao-seed-2-1-turbo（OpenAI 兼容）
+                 也可切换为 DeepSeek / 智谱 / 通义 / Ollama
 ```
+
+### 为什么密钥不放在前端
+
+`VITE_` 前缀的变量会被打进 JS 产物，任何访问者打开 DevTools 都能看到。因此本项目默认走**本地 Node 代理**：密钥只在服务端进程的环境变量里，浏览器只知道"能不能用、还剩多少额度"。这既满足比赛对密钥存放的硬性要求，也让前端换模型不需要重新打包。
 
 ### AI 链路的四个层次
 
@@ -113,7 +125,7 @@
    文档按段落切块并合并短段，中文用「单字 + 二元组」分词，英文按词切分；查询侧做 50+ 组同义扩展（如"睡不着 → 失眠/睡眠"、"背了就忘 → 记忆/遗忘"）；BM25（k1=1.45, b=0.72）排序，**标题与标签命中额外加权**，同一篇只保留最相关的一段，最后按相关度做门控——没有话题锚点、二元组命中也少时直接返回空，宁可说"没查到"，也不把无关段落塞给模型。
 
 2. **Agent 编排**
-   `预检索 + 风险扫描 → 组装 system（人设 + 用户情绪画像 + 检索资料 + 安全约束）→ 流式请求 → 若有 tool_calls 则执行并回填 → 再次请求`，最多 4 步。工具执行会同时产生两个结果：给模型的语义化文本、给界面的真实动作（打开呼吸面板 / 打开量表 / 写入情绪记录）。
+   `预检索 + 风险扫描 → 组装 system（人设 + 用户情绪画像 + 检索资料 + 安全约束）→ 流式请求 → 若有 tool_calls 则执行并回填 → 再次请求`，最多 3 步。工具执行会同时产生两个结果：给模型的语义化文本、给界面的真实动作（打开呼吸面板 / 打开量表 / 写入情绪记录）。每多一步都要重发整段上下文，所以步数、历史轮数都做了上限。
 
 3. **安全与可控**
    - 输入和输出都过关键词分级（high / medium / low），高危触发安全协议并置顶 12356 卡片；
@@ -151,31 +163,53 @@ cd Isle-of-Moods
 # 1. 安装依赖
 npm install
 
-# 2. 启动开发服务
-npm run dev          # http://127.0.0.1:5173
+# 2. 配置密钥（只写在本机，不会进 Git）
+cp .env.example .env.local      # Windows: copy .env.example .env.local
+# 打开 .env.local，填 ARK_API_KEY=...
 
-# 3. 生产构建与本地预览
-npm run build        # tsc --noEmit && vite build
-npm run preview      # http://127.0.0.1:4173
+# 3. 一条命令同时起代理与前端
+npm run dev                     # http://127.0.0.1:5173
+
+# 4. 生产构建 + 单端口演示（页面与 API 都在 8787）
+npm run demo
 ```
 
-### 配置模型（二选一）
+### 环境变量模板
 
-**方式 A：界面配置（推荐给评审）**
-打开应用 → 右上角齿轮 → 填入 Base URL / 模型名 / API Key → 「测试连接」。Key 仅保存在本机 `localStorage`。
+完整模板见 [`.env.example`](.env.example)。`.env.local` 已在 `.gitignore` 中，不会进入仓库。
 
-内置预设：DeepSeek、智谱 GLM、通义千问、本地 Ollama。
+| 变量 | 必填 | 说明 |
+| --- | --- | --- |
+| `ARK_API_KEY` | 是 | 火山方舟 API Key（仅服务端读取） |
+| `ARK_MODEL` | 是 | 已开通的模型 ID，如 `doubao-seed-2-1-turbo-260628` |
+| `ARK_BASE_URL` | 否 | 默认 `https://ark.cn-beijing.volces.com/api/v3` |
+| `ARK_TOKEN_BUDGET` | 否 | 自设 token 上限，默认 300000，触达即停 |
+| `ARK_MAX_OUTPUT_TOKENS` | 否 | 单次输出上限，默认 700 |
+| `ARK_RATE_LIMIT` | 否 | 每分钟请求上限，默认 20 |
+| `PROXY_PORT` | 否 | 本地代理端口，默认 8787 |
 
-**方式 B：环境变量**
-复制 `.env.example` 为 `.env` 并填写：
+> 没有密钥也能跑：应用会自动进入「本地知识模式」，检索 + 规则化共情模板，界面功能完整。
 
-```bash
-VITE_LLM_BASE_URL=https://api.deepseek.com/v1
-VITE_LLM_MODEL=deepseek-chat
-VITE_LLM_API_KEY=
-```
+### 换成别的模型
 
-> `VITE_` 变量会被打包进前端产物。公开部署的演示站请勿写入真实 Key，建议留空由评审自行填写。
+- **同一代理换模型**：改 `.env.local` 的 `ARK_MODEL`，重启代理即可，前端不用重新打包；
+- **临时直连其他厂商**：设置 → Base URL 改成完整地址并填自己的 Key（此时 Key 存在浏览器本地，仅供评审临时试用）；
+- **查看账号可见模型**：`npm run ark:models`。注意"列表里能看到"不等于"已开通"，未开通的调用会返回 `ModelNotOpen`，需要先到控制台开通。
+
+### 合规说明
+
+只用火山方舟**官方开放 API**（`/api/v3/chat/completions`），不抓取网页版、不模拟网页接口。
+
+### 费用与额度控制
+
+商用 API 费用由使用者自行承担。为把免费额度留给演示，代理层设了四道闸：
+
+1. **关闭深度思考**（`thinking: disabled`）——实测同一句话 completion 从 879 tokens 降到 45 tokens；
+2. **限制输出长度**——默认 700 tokens，人设里另有 260 字上限；
+3. **限制上下文**——只带最近 4 轮、单条超 500 字截断、工具循环最多 3 步；
+4. **token 账本熔断**——每次调用累加 `usage`，触达 `ARK_TOKEN_BUDGET` 后直接返回 429 `QuotaExhausted`，前端立刻提示「免费额度已用完」并切到本地知识模式，**不再发出任何请求**。
+
+用量在「设置」里可见（进度条 + 剩余额度）；服务端账本在 `server/.usage.json`，已忽略，不会提交。
 
 ---
 
@@ -190,6 +224,9 @@ VITE_LLM_API_KEY=
 | GitHub Pages | 需在 `vite.config.ts` 设置 `base`，并将路由改为 HashRouter；或用 404.html 兜底 |
 | 自有服务器 | Nginx 托管 `dist`，`try_files $uri $uri/ /index.html;` |
 
+> ⚠️ **纯静态托管没有代理层**，`/api` 不存在，页面会退回本地知识模式（功能仍完整可用）。
+> 需要线上也能对话时，把 `server/proxy.mjs` 部署到任意支持 Node 的服务，或直接用 `npm run demo` 在本机单端口演示（比赛评审推荐这种方式）。
+
 ---
 
 ## 隐私与数据
@@ -197,7 +234,8 @@ VITE_LLM_API_KEY=
 - 无手机号、无邮箱、无第三方统计与广告脚本；账号只用于在这台设备上给数据分抽屉；
 - 密码用 SHA-256 加盐后存 `localStorage`（`sereneisle.auth.*`），没有服务端可校验，也取不回明文；
 - 每位岛主的数据按命名空间隔离：`sereneisle.v1.u_<id>.mood` 等，切换账号互不可见；
-- 对话、情绪记录、自评结果、API Key 均存于 `localStorage`（键名前缀 `sereneisle.v1.`）；
+- 对话、情绪记录、自评结果存于 `localStorage`（键名前缀 `sereneisle.v1.`）；
+- **API Key 不在浏览器里**：默认走本地代理，密钥只存在于服务端 `.env.local`（已被 `.gitignore` 忽略），既不进 Git、也不进前端产物；只有手动切到"直连模式"时，你自己填的 Key 才会存在本机浏览器；
 - 设置中可导出 JSON 备份，或一键删除全部本地数据；
 - 清除浏览器站点数据即彻底删除；
 - 知识库与检索全部在浏览器内完成，问题原文不会离开设备（除非你配置了云端模型）；
@@ -212,21 +250,25 @@ serene-isle/
 ├─ public/
 │  ├─ brand/                 # 抠图后的品牌图标（512/256/128/64 + favicon + 圆形头像）
 │  └─ _redirects             # Netlify SPA 兜底
+├─ server/
+│  └─ proxy.mjs              # 本地 AI 代理：注入密钥、关闭思考、限流、token 账本熔断、托管 dist
 ├─ scripts/
+│  ├─ dev.mjs                # 一条命令同时起代理 + Vite
+│  ├─ ark-models.mjs         # 查看账号可见的对话模型
 │  ├─ cutout.py              # 图标抠图脚本（容差洪泛 + 最大连通域 + 形态学腐蚀）
 │  └─ mock-llm.mjs           # 本地 OpenAI 兼容 Mock，用于验证流式与工具调用
 ├─ src/
 │  ├─ components/            # Layout / IslandAtlas / MoodHeatmap / BookShelf / SafetyPlan …
 │  │  └─ games/              # Bubbles / ShellHunt / Skipping / StarWish（Canvas 小游戏）
 │  ├─ pages/                 # Home / Chat / Library / Calm / Play / Mood / Harbor / About
-│  ├─ lib/                   # agent / llm / tools / rag / crisis / tts / wallpaper / moment / sfx / canvas
+│  ├─ lib/                   # agent / llm / ai / tools / rag / crisis / tts / wallpaper / moment / sfx / canvas
 │  ├─ store/useAppStore.ts   # Zustand 单一状态源
 │  ├─ index.css              # 设计令牌与组件层
 │  └─ main.tsx               # 路由与全局弹层
 ├─ docs/
 │  ├─ brand/icon-1024.png    # 图标原尺寸（用于文档/视频，不打入产物）
 │  └─ screenshots/
-├─ .env.example
+├─ .env.example              # 环境变量模板（不含真实密钥）
 └─ vite.config.ts
 ```
 
