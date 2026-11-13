@@ -7,6 +7,7 @@ import { runAgent } from '../lib/agent'
 import { summarize } from '../lib/mood'
 import { TOOL_LABELS } from '../lib/tools'
 import type { ChatMessage, Citation, RiskLevel, ToolTraceItem } from '../lib/types'
+import { docById } from '../lib/rag'
 import { isASRSupported, startRecognition } from '../lib/tts'
 import { useAppStore } from '../store/useAppStore'
 import { Icon } from '../components/Icons'
@@ -125,6 +126,12 @@ function CitationList({ items }: { items: Citation[] }) {
                   <span className="chip shrink-0 text-[9.5px]">{c.category}</span>
                 </div>
                 <p className="mt-1 text-[10.5px] leading-relaxed text-ink-500">{c.snippet}</p>
+                {docById(c.docId)?.sources?.[0] && (
+                  <p className="mt-1 flex items-start gap-1 text-[9.5px] leading-relaxed text-ink-300">
+                    <span className="mt-[4px] h-1 w-1 shrink-0 rounded-full bg-[#c8a97e]" />
+                    <span>依据：{docById(c.docId)?.sources?.[0]}</span>
+                  </p>
+                )}
                 <Link
                   to={`/library?doc=${c.docId}`}
                   className="mt-1 inline-block text-[10px] text-sea-600 underline underline-offset-2"

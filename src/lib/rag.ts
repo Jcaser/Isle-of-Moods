@@ -231,7 +231,7 @@ export function retrieve(query: string, topK = 3): Citation[] {
 
     // 命中标题/标签 = 这段确实在聊这个话题，给一个强加分
     const keys = c.keys.filter((k) => q.includes(k)).length
-    score += Math.min(keys, 3) * 6
+    score += Math.min(keys, 3) * 9
 
     // 相关性门控：没有话题锚点、命中的二元组也少于 2 个，就当作没检索到，
     // 宁可返回空，也不要把不相关的段落塞给模型（否则会出现"问食堂菜也引用失眠"）

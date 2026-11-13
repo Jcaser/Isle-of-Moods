@@ -43,7 +43,7 @@ export function KnowledgePane({ focusDocId }: { focusDocId?: string | null }) {
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
         <p className="max-w-2xl text-[12.5px] leading-relaxed text-ink-500">
-          岛主的私人知识库：教育心理学、CBT、睡眠与学习科学。岛主回答时会先在这里检索并标注出处——用检索约束生成，减少一本正经的胡说。
+          岛主的私人知识库：教育心理学、CBT、睡眠与学习科学，其中一部方法条目改写自《认知行为疗法：基础与应用》《理智胜过情感》《伯恩斯新情绪疗法》，篇末可查看依据。岛主回答时会先在这里检索并标注出处——用检索约束生成，减少一本正经的胡说。
         </p>
         <div className="flex gap-2">
           <div className="rounded-2xl border border-white/70 bg-white/55 px-3.5 py-1.5 text-center">
@@ -165,6 +165,26 @@ export function KnowledgePane({ focusDocId }: { focusDocId?: string | null }) {
                 </span>
               ))}
             </div>
+            {/* 出处：只有改写自某本书的条目才有 */}
+            {active.sources?.length ? (
+              <div className="mt-4 rounded-2xl border border-[#e6dac4] bg-[#fdfaf3] px-4 py-3">
+                <p className="text-[9.5px] font-semibold uppercase tracking-[0.2em] text-[#b08d62]">
+                  参考依据
+                </p>
+                <ul className="mt-1.5 space-y-1">
+                  {active.sources.map((src) => (
+                    <li key={src} className="flex gap-1.5 text-[11px] leading-relaxed text-ink-600">
+                      <span className="mt-[6px] h-1 w-1 shrink-0 rounded-full bg-[#c8a97e]" />
+                      <span>{src}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-[9.5px] leading-relaxed text-ink-300">
+                  以上书目的方法框架由本项目改写为中文说明，非原文摘录。
+                </p>
+              </div>
+            ) : null}
+
             <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-white/60 pt-4">
               <button
                 onClick={() => {
