@@ -69,19 +69,19 @@ const SPOTS: Spot[] = [
   {
     id: 'library',
     index: '03',
-    name: '藏书阁',
-    en: 'The Archive',
+    name: '分享小屋',
+    en: 'The Share Hut',
     to: '/library',
     x: 286,
     y: 320,
     lx: 292,
     ly: 370,
     anchor: 'middle',
-    tagline: '十二本关于焦虑、睡眠与学习科学的书，答案都能翻回原页。',
+    tagline: '一排木架上放着岛民自己写的书，翻开能读，也能留一张便签。',
     points: [
-      '自建语料：CBT 模型、倒 U 曲线、睡眠限制、间隔重复等 12 篇。',
-      '中文二元组分词 + 同义词扩展 + BM25 排序，回答里的 [1] 可展开原文。',
-      '用检索约束生成，减少模型"一本正经地胡说"。',
+      '写一本自己的小书：选一个情绪、写下此刻，再像做手账一样设计封面。',
+      '点开别人的书读内页，留一张带胶带的暖心便签；收到的回复会进我的书架。',
+      '每本书可设公开或私密；岛主的科普知识库也在这一页的另一栏里。',
     ],
     meta: 'RAG · 可追溯引用',
     action: 'read',
@@ -431,7 +431,7 @@ export function IslandAtlas() {
           viewBox="146 104 574 424"
           className="w-full select-none"
           role="img"
-          aria-label="清绪之屿全景地图：灯塔、藏书阁、潮汐湾、乐园沙滩、观测台与避风港"
+          aria-label="清绪之屿全景地图：灯塔、分享小屋、潮汐湾、乐园沙滩、观测台与避风港"
         >
           <defs>
             <linearGradient id="atlas-sea" x1="0.1" y1="0" x2="0.5" y2="1">
@@ -658,9 +658,9 @@ export function IslandAtlas() {
             </g>
           </g>
 
-          {/* ── 藏书阁 ── */}
+          {/* ── 分享小屋 ── */}
           <g transform="translate(286,320)">
-            <g {...spotProps('library', '藏书阁')}>
+            <g {...spotProps('library', '分享小屋')}>
               <circle className="atlas-ring" r="40" fill="none" stroke="rgba(169,155,224,0.45)" strokeWidth="1.2" strokeDasharray="3 5" />
               <ellipse cx="0" cy="10" rx="30" ry="9" fill="rgba(88,132,110,0.16)" />
               <rect x="-23" y="-16" width="46" height="26" rx="2.5" fill="#fdfaf3" stroke="#e0d3bd" strokeWidth="1" />

@@ -1,205 +1,500 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
 import { Icon } from '../components/Icons'
-import { BookShelf } from '../components/BookShelf'
-import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
-import { CATEGORIES, KNOWLEDGE_DOCS, type KnowledgeDoc } from '../lib/knowledge'
-import { KB_STATS, searchDocs } from '../lib/rag'
+import { BookReader, StickyNote } from '../components/library/BookReader'
+import { BookStudio, type BookDraft } from '../components/library/BookStudio'
+import { BookWall } from '../components/library/BookWall'
+import { BookCover } from '../components/library/BookCover'
+import { KnowledgePane } from '../components/library/KnowledgePane'
+import { useAuthStore } from '../store/useAuthStore'
+import {
+  MOODS,
+  MOOD_KEYS,
+  attachReplies,
+  countNotes,
+  loadMyBooks,
+  loadReplies,
+  saveMyBooks,
+  saveReplies,
+  sortBooks,
+  timeAgo,
+  uid,
+  wallBooks,
+  type Book,
+  type MoodKey,
+  type Reply,
+  type SortKey,
+} from '../lib/books'
+import { sfx } from '../lib/sfx'
 
-const CATEGORY_TONE: Record<string, string> = {
-  焦虑机制: 'bg-sea-100 text-sea-700',
-  'CBT 认知': 'bg-lav-100 text-lav-500',
-  放松技术: 'bg-sea-50 text-sea-600',
-  睡眠: 'bg-[#e9e4f7] text-[#7c6bb8]',
-  学习策略: 'bg-sand-100 text-[#a8895c]',
-  危机识别: 'bg-coral-300/25 text-[#c2634f]',
-}
+type Tab = 'wall' | 'mine' | 'knowledge'
+
+const TABS: { key: Tab; label: string; hint: string }[] = [
+  { key: 'wall', label: '书墙', hint: '大家的书' },
+  { key: 'mine', label: '我的书架', hint: '我写的与收到的' },
+  { key: 'knowledge', label: '知识库', hint: '岛主读过的' },
+]
+
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: 'new', label: '最新发布' },
+  { key: 'old', label: '最早发布' },
+  { key: 'notes', label: '便签最多' },
+]
 
 export default function Library() {
-  const [keyword, setKeyword] = useState('')
-  const [category, setCategory] = useState<string>('全部')
+  const user = useAuthStore((s) => s.user)
+  const [own, setOwn] = useState<Book[]>(() => loadMyBooks())
+  const [replyMap, setReplyMap] = useState<Record<string, Reply[]>>(() => loadReplies())
+  const [tab, setTab] = useState<Tab>('wall')
+  const [moodFilter, setMoodFilter] = useState<MoodKey | 'all'>('all')
+  const [sort, setSort] = useState<SortKey>('new')
+  const [readerId, setReaderId] = useState<string | null>(null)
+  const [studio, setStudio] = useState<{ open: boolean; mode: 'create' | 'cover'; editing: Book | null }>({
+    open: false,
+    mode: 'create',
+    editing: null,
+  })
+  const [toast, setToast] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [params, setParams] = useSearchParams()
-  const [active, setActive] = useState<KnowledgeDoc | null>(null)
-  const navigate = useNavigate()
 
-  const docs = useMemo(() => searchDocs(keyword, category), [keyword, category])
+  const myName = user?.name ?? '岛民'
+  const myId = user?.id ?? 'guest'
+
+  useEffect(() => saveMyBooks(own), [own])
+  useEffect(() => saveReplies(replyMap), [replyMap])
 
   useEffect(() => {
-    const id = params.get('doc')
-    if (id) {
-      const doc = KNOWLEDGE_DOCS.find((d) => d.id === id)
-      if (doc) setActive(doc)
-    }
-  }, [params])
+    if (!toast) return
+    const t = window.setTimeout(() => setToast(null), 2600)
+    return () => window.clearTimeout(t)
+  }, [toast])
 
-  const closeReader = () => {
-    setActive(null)
-    if (params.get('doc')) {
-      params.delete('doc')
-      setParams(params, { replace: true })
+  /* 从聊天里的引用点进来：直接落到知识库那栏并打开原文 */
+  const focusDoc = params.get('doc')
+  useEffect(() => {
+    if (focusDoc) setTab('knowledge')
+  }, [focusDoc])
+
+  const wall = useMemo(() => attachReplies(wallBooks(own), replyMap), [own, replyMap])
+  const mine = useMemo(() => attachReplies(own, replyMap), [own, replyMap])
+
+  const filtered = useMemo(() => {
+    const base = moodFilter === 'all' ? wall : wall.filter((b) => b.mood === moodFilter)
+    return sortBooks(base, sort)
+  }, [wall, moodFilter, sort])
+
+  const readerBook = useMemo(() => {
+    if (!readerId) return null
+    return wall.find((b) => b.id === readerId) ?? mine.find((b) => b.id === readerId) ?? null
+  }, [readerId, wall, mine])
+
+  const notesOnMine = useMemo(
+    () =>
+      mine
+        .flatMap((b) => b.replies.map((r) => ({ ...r, bookTitle: b.title })))
+        .sort((a, b) => b.createdAt - a.createdAt),
+    [mine],
+  )
+
+  const addReply = (bookId: string, content: string, color: number) => {
+    const r: Reply = {
+      id: uid(),
+      bookId,
+      author: myName,
+      authorId: myId,
+      content,
+      color,
+      createdAt: Date.now(),
     }
+    setReplyMap((m) => ({ ...m, [bookId]: [...(m[bookId] ?? []), r] }))
+  }
+
+  const saveDraft = (draft: BookDraft) => {
+    if (studio.mode === 'cover' && studio.editing) {
+      const id = studio.editing.id
+      setOwn((list) => list.map((b) => (b.id === id ? { ...b, cover: draft.cover } : b)))
+      setStudio({ open: false, mode: 'create', editing: null })
+      setToast('封面已经换好啦~')
+      return
+    }
+
+    const book: Book = {
+      id: uid(),
+      authorId: myId,
+      author: myName,
+      title: draft.title,
+      mood: draft.mood,
+      content: draft.content,
+      cover: draft.cover,
+      visibility: draft.visibility,
+      createdAt: Date.now(),
+      replies: [],
+    }
+    setOwn((list) => [book, ...list])
+    setStudio({ open: false, mode: 'create', editing: null })
+    setTab(draft.visibility === 'public' ? 'wall' : 'mine')
+    setMoodFilter('all')
+    setSort('new')
+    setToast(draft.visibility === 'public' ? '你的书已经放进书墙了，等一个懂的人翻开~' : '已经放进你的书架，只有你看得见')
+  }
+
+  const toggleVisibility = (id: string) => {
+    sfx.pop(1)
+    setOwn((list) =>
+      list.map((b) => (b.id === id ? { ...b, visibility: b.visibility === 'public' ? 'private' : 'public' } : b)),
+    )
+    setToast('可见范围已经改好了')
+  }
+
+  const removeBook = (id: string) => {
+    setOwn((list) => list.filter((b) => b.id !== id))
+    setReplyMap((m) => {
+      const next = { ...m }
+      delete next[id]
+      return next
+    })
+    setConfirmDelete(null)
+    setToast('这本书已经收起来了')
+  }
+
+  const openStudio = (mode: 'create' | 'cover', editing: Book | null = null) => {
+    sfx.whoosh()
+    setStudio({ open: true, mode, editing })
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-6xl px-4 pb-16 sm:px-6 lg:px-8">
       <PageHeader
-        eyebrow="Repository · RAG"
+        eyebrow="Share Hut · Book Wall"
         icon={<Icon name="book" size={13} />}
-        title="屿藏书阁"
-        desc="考前心理的私有知识库：教育心理学、CBT、睡眠与学习科学。岛主的每一次回答都会先在这里检索，并标注出处——用检索约束生成，减少一本正经的胡说。"
+        title="分享小屋"
+        desc="每一本书都是一段真实的心事：一次没考好的模考、一个说不出口的困惑、一顿差点掉眼泪的晚饭。你可以写下自己的，也可以翻开别人的，在书页上贴一张便签——不评判、不讲道理，只是陪着。"
         right={
-          <div className="flex gap-2">
-            <div className="rounded-2xl border border-white/70 bg-white/55 px-3.5 py-2 text-center">
-              <p className="font-display text-lg font-semibold leading-none text-ink-900">{KB_STATS.docs}</p>
-              <p className="mt-1 text-[10px] text-ink-400">篇条目</p>
+          <div className="flex items-center gap-2">
+            <div className="hidden rounded-2xl border border-white/70 bg-white/55 px-3.5 py-2 text-center sm:block">
+              <p className="font-display text-lg font-semibold leading-none text-ink-900">{wall.length}</p>
+              <p className="mt-1 text-[10px] text-ink-400">本书在架</p>
             </div>
-            <div className="rounded-2xl border border-white/70 bg-white/55 px-3.5 py-2 text-center">
-              <p className="font-display text-lg font-semibold leading-none text-ink-900">{KB_STATS.chunks}</p>
-              <p className="mt-1 text-[10px] text-ink-400">个检索片段</p>
+            <div className="hidden rounded-2xl border border-white/70 bg-white/55 px-3.5 py-2 text-center sm:block">
+              <p className="font-display text-lg font-semibold leading-none text-ink-900">{countNotes(wall)}</p>
+              <p className="mt-1 text-[10px] text-ink-400">张暖心便签</p>
             </div>
+            <button onClick={() => openStudio('create')} className="btn-primary px-4 py-2.5 text-[12.5px]">
+              <Icon name="feather" size={14} />
+              写一本书
+            </button>
           </div>
         }
       />
 
-      {/* 书架 */}
-      <section className="mb-6 rounded-5xl border border-white/70 bg-gradient-to-b from-white/55 to-white/25 px-3 py-4 backdrop-blur-sm sm:px-5">
-        <div className="mb-1 flex items-center justify-between px-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-sea-500">The Shelf</p>
-          <p className="text-[10.5px] text-ink-300">点书脊，直接翻开</p>
-        </div>
-        <BookShelf docs={KNOWLEDGE_DOCS} onOpen={(d) => setActive(d)} />
-      </section>
-
-      {/* 检索条 */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Icon name="book" size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300" />
-          <input
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="搜索：失眠 / 灾难化 / 拖延 / 呼吸…"
-            className="input py-3 pl-11"
-            aria-label="搜索知识库"
-          />
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {CATEGORIES.map((c) => (
+      {/* 分栏 */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative flex rounded-full border border-white/70 bg-white/45 p-1 backdrop-blur">
+          {TABS.map((t) => (
             <button
-              key={c}
-              onClick={() => setCategory(c)}
-              className={`rounded-full border px-3 py-1.5 text-[11.5px] transition ${
-                category === c
-                  ? 'border-sea-300 bg-white/90 text-sea-700 shadow-sm'
-                  : 'border-white/70 bg-white/45 text-ink-500 hover:bg-white/75'
+              key={t.key}
+              onClick={() => {
+                setTab(t.key)
+                sfx.tick()
+              }}
+              className={`relative rounded-full px-4 py-2 text-[12px] transition ${
+                tab === t.key ? 'text-ink-900' : 'text-ink-400 hover:text-ink-700'
               }`}
+              role="tab"
+              aria-selected={tab === t.key}
             >
-              {c}
+              {tab === t.key && (
+                <motion.span
+                  layoutId="library-tab"
+                  className="absolute inset-0 rounded-full bg-white shadow-[0_6px_16px_-10px_rgba(46,96,112,0.6)]"
+                  transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                />
+              )}
+              <span className="relative">{t.label}</span>
             </button>
           ))}
         </div>
-      </div>
 
-      {/* 说明 */}
-      <div className="mt-4 flex items-start gap-2 rounded-3xl border border-white/70 bg-white/45 px-4 py-3 text-[11.5px] leading-relaxed text-ink-500">
-        <Icon name="sparkles" size={14} className="mt-0.5 shrink-0 text-lav-400" />
-        <p>
-          检索采用<strong className="font-medium text-ink-700">本地 BM25 + 中文二元组分词 + 同义扩展</strong>
-          ，按段落切块，答案中引用的编号可点开原文对照。所有计算在浏览器内完成，不上传任何内容。
+        <p className="text-[10.5px] tracking-[0.12em] text-ink-300">
+          {tab === 'wall' ? '点一本书翻开 · 读完可以留一张便签' : tab === 'mine' ? '只属于你的一格书架' : '岛主回答的出处'}
         </p>
       </div>
 
-      {/* 文档列表 */}
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <AnimatePresence mode="popLayout">
-          {docs.map((d, i) => (
-            <motion.button
-              key={d.id}
-              layout
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.3, delay: Math.min(i * 0.03, 0.2) }}
-              onClick={() => setActive(d)}
-              className="group flex h-full flex-col rounded-4xl border border-white/70 bg-white/55 p-5 text-left shadow-soft transition-all duration-400 hover:-translate-y-1 hover:bg-white/85 hover:shadow-float"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${CATEGORY_TONE[d.category] ?? 'bg-sea-50 text-sea-600'}`}>
-                  {d.category}
-                </span>
-                <Icon name="arrowRight" size={14} className="text-ink-300 transition group-hover:translate-x-0.5 group-hover:text-sea-500" />
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={tab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.24 }}
+          className="mt-5"
+        >
+          {tab === 'wall' && (
+            <>
+              {/* 筛选 */}
+              <div className="flex flex-col gap-2.5 rounded-4xl border border-white/70 bg-white/40 px-3.5 py-3 backdrop-blur-sm sm:flex-row sm:items-center">
+                <div className="no-bar flex flex-1 gap-1.5 overflow-x-auto">
+                  <button
+                    onClick={() => setMoodFilter('all')}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] transition ${
+                      moodFilter === 'all'
+                        ? 'border-sea-300 bg-white text-sea-700 shadow-sm'
+                        : 'border-white/70 bg-white/45 text-ink-500 hover:bg-white/80'
+                    }`}
+                  >
+                    全部情绪
+                  </button>
+                  {MOOD_KEYS.map((k) => (
+                    <button
+                      key={k}
+                      onClick={() => setMoodFilter(k)}
+                      className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] transition ${
+                        moodFilter === k
+                          ? 'border-sea-300 bg-white text-sea-700 shadow-sm'
+                          : 'border-white/70 bg-white/45 text-ink-500 hover:bg-white/80'
+                      }`}
+                    >
+                      <span
+                        className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle"
+                        style={{ background: MOODS[k].dot }}
+                      />
+                      {MOODS[k].label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {SORTS.map((s) => (
+                    <button
+                      key={s.key}
+                      onClick={() => setSort(s.key)}
+                      className={`rounded-full px-2.5 py-1.5 text-[10.5px] transition ${
+                        sort === s.key ? 'bg-white text-ink-800 shadow-sm' : 'text-ink-400 hover:bg-white/70'
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <h3 className="mt-3 font-display text-[15.5px] font-semibold leading-snug tracking-tight text-ink-900">{d.title}</h3>
-              <p className="mt-2 flex-1 text-[12px] leading-relaxed text-ink-500">{d.summary}</p>
-              <div className="mt-3 flex flex-wrap gap-1">
-                {d.tags.slice(0, 4).map((t) => (
-                  <span key={t} className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] text-ink-400">
-                    #{t}
-                  </span>
-                ))}
-              </div>
-            </motion.button>
-          ))}
-        </AnimatePresence>
-      </div>
 
-      {docs.length === 0 && (
-        <div className="mt-10 rounded-4xl border border-dashed border-sea-200/70 bg-white/40 px-6 py-12 text-center">
-          <p className="text-[13px] text-ink-500">没有找到「{keyword}」相关的条目</p>
-          <button
-            onClick={() => {
-              setKeyword('')
-              setCategory('全部')
-            }}
-            className="btn-ghost mt-4 text-[12px]"
-          >
-            清空筛选
-          </button>
-        </div>
-      )}
+              {filtered.length > 0 ? (
+                <div className="mt-3 rounded-[2rem] border border-white/60 bg-gradient-to-b from-white/40 to-white/12 px-2 py-2 sm:px-4">
+                  <BookWall books={filtered} onOpen={(b) => setReaderId(b.id)} onCreate={() => openStudio('create')} />
+                </div>
+              ) : (
+                <div className="mt-3 rounded-[2rem] border border-dashed border-sea-200/70 bg-white/35 px-6 py-14 text-center">
+                  <p className="font-display text-[15px] text-ink-600">
+                    这一格书架还空着，{moodFilter === 'all' ? '' : `暂时没有「${MOODS[moodFilter].label}」的书`}
+                  </p>
+                  <p className="mt-2 text-[11.5px] text-ink-400">要不要把你的那一本放上来，做第一个？</p>
+                  <div className="mt-5 flex justify-center gap-2">
+                    <button onClick={() => setMoodFilter('all')} className="btn-ghost px-4 py-2 text-[11.5px]">
+                      看看全部
+                    </button>
+                    <button onClick={() => openStudio('create')} className="btn-primary px-4 py-2 text-[11.5px]">
+                      写一本
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-5 flex items-start gap-2.5 rounded-3xl border border-white/70 bg-white/45 px-4 py-3.5">
+                <Icon name="heart" size={14} className="mt-0.5 shrink-0 text-coral-400" />
+                <p className="text-[11.5px] leading-relaxed text-ink-500">
+                  书墙上的每一本都由岛民亲手写下、亲手做了封面。留下便签的时候，不必急着给建议——
+                  <strong className="font-medium text-ink-700">「我也这样过」</strong>
+                  往往比「你应该」更有力量。所有内容只保存在这台设备上。
+                </p>
+              </div>
+            </>
+          )}
+
+          {tab === 'mine' && (
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-sea-500">My Shelf</p>
+                  <h2 className="mt-1.5 font-display text-[19px] font-semibold text-ink-900">
+                    我的书架 <span className="text-[11px] font-normal text-ink-300">· {mine.length} 本</span>
+                  </h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="chip">
+                    <Icon name="mail" size={11} />
+                    收到 {notesOnMine.length} 张便签
+                  </span>
+                  <button onClick={() => openStudio('create')} className="btn-ghost px-3.5 py-2 text-[11.5px]">
+                    <Icon name="feather" size={12} />
+                    写一本
+                  </button>
+                </div>
+              </div>
+
+              {mine.length === 0 ? (
+                <div className="rounded-[2rem] border border-dashed border-sea-200/70 bg-white/35 px-6 py-14 text-center">
+                  <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white/80 text-sea-500 shadow-sm">
+                    <Icon name="book" size={22} />
+                  </span>
+                  <p className="mt-4 font-display text-[15.5px] text-ink-700">你的书架还空着</p>
+                  <p className="mx-auto mt-2 max-w-sm text-[11.5px] leading-relaxed text-ink-400">
+                    写下第一本小书吧。可以只有一句话，也可以是一段很久没对人说过的心事。
+                  </p>
+                  <button onClick={() => openStudio('create')} className="btn-primary mt-5 px-5 py-2.5 text-[12px]">
+                    <Icon name="feather" size={14} />
+                    写第一本书
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4">
+                  {mine.map((b, i) => (
+                    <motion.div
+                      key={b.id}
+                      initial={{ opacity: 0, y: 14 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: Math.min(i * 0.04, 0.24), duration: 0.35 }}
+                      className="group rounded-[18px] border border-white/70 bg-white/55 p-2.5 transition hover:-translate-y-1 hover:bg-white/85 hover:shadow-soft"
+                    >
+                      <button onClick={() => setReaderId(b.id)} className="block w-full text-left focus-ring">
+                        <div className="overflow-hidden rounded-[8px] shadow-[0_12px_22px_-18px_rgba(46,96,112,0.7)] transition group-hover:shadow-[0_18px_28px_-18px_rgba(46,96,112,0.7)]">
+                          <BookCover cover={b.cover} title={b.title} author={b.author} mood={b.mood} size="sm" />
+                        </div>
+                      </button>
+                      <div className="mt-2 flex items-start justify-between gap-1">
+                        <p className="truncate text-[11px] font-medium text-ink-800">{b.title}</p>
+                        <span className="mt-0.5 flex shrink-0 items-center gap-0.5 text-[9px] text-ink-300">
+                          <Icon name="mail" size={9} />
+                          {b.replies.length}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 flex items-center gap-1 text-[9px] text-ink-300">
+                        <span className="h-1 w-1 rounded-full" style={{ background: MOODS[b.mood].dot }} />
+                        {MOODS[b.mood].label} · {timeAgo(b.createdAt)}
+                      </p>
+
+                      <div className="mt-2 flex items-center gap-1 border-t border-white/70 pt-2">
+                        <button
+                          onClick={() => toggleVisibility(b.id)}
+                          className={`flex items-center gap-1 rounded-full px-1.5 py-1 text-[9.5px] transition ${
+                            b.visibility === 'public'
+                              ? 'bg-sea-50 text-sea-600 hover:bg-sea-100'
+                              : 'bg-ink-900/5 text-ink-400 hover:bg-ink-900/10'
+                          }`}
+                          aria-label={b.visibility === 'public' ? '设为私密' : '设为公开'}
+                        >
+                          <Icon name={b.visibility === 'public' ? 'eye' : 'lock'} size={9} />
+                          {b.visibility === 'public' ? '公开' : '私密'}
+                        </button>
+                        <button
+                          onClick={() => openStudio('cover', b)}
+                          className="rounded-full px-1.5 py-1 text-[9.5px] text-ink-400 transition hover:bg-white hover:text-sea-600"
+                          aria-label="编辑封面"
+                        >
+                          改封面
+                        </button>
+                        <button
+                          onClick={() => (confirmDelete === b.id ? removeBook(b.id) : setConfirmDelete(b.id))}
+                          className={`ml-auto rounded-full px-1.5 py-1 text-[9.5px] transition ${
+                            confirmDelete === b.id
+                              ? 'bg-coral-300/30 text-[#c2634f]'
+                              : 'text-ink-300 hover:bg-white hover:text-coral-500'
+                          }`}
+                          aria-label="删除这本书"
+                        >
+                          {confirmDelete === b.id ? '再点一次' : <Icon name="trash" size={10} />}
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+
+              <div className="rounded-[2rem] border border-white/70 bg-white/45 p-4 sm:p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-sea-500">Notes for You</p>
+                    <h3 className="mt-1 font-display text-[16px] font-semibold text-ink-900">收到的暖心便签</h3>
+                  </div>
+                  <span className="text-[10.5px] text-ink-300">{notesOnMine.length} 张</span>
+                </div>
+
+                {notesOnMine.length === 0 ? (
+                  <p className="mx-auto mt-4 max-w-xl rounded-2xl border border-dashed border-sea-200/70 bg-white/40 px-4 py-8 text-center text-[11.5px] leading-relaxed text-ink-400">
+                    还没有人留下便签。把书设为公开，它会被更多岛上的人看见。
+                  </p>
+                ) : (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {notesOnMine.map((n, i) => (
+                      <div key={n.id} className="space-y-1.5">
+                        <p className="flex items-center gap-1 text-[9.5px] text-ink-300">
+                          <Icon name="book" size={9} />
+                          贴在《{n.bookTitle}》
+                        </p>
+                        <StickyNote text={n.content} author={n.author} time={timeAgo(n.createdAt)} color={n.color + i} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {tab === 'knowledge' && <KnowledgePane focusDocId={focusDoc} />}
+        </motion.div>
+      </AnimatePresence>
 
       {/* 阅读器 */}
-      <Modal
-        open={Boolean(active)}
-        onClose={closeReader}
-        title={active?.title}
-        subtitle={active ? `${active.category} · 约 ${Math.ceil(active.content.length / 380)} 分钟读完` : undefined}
-        maxWidth="max-w-3xl"
-      >
-        {active && (
-          <article>
-            <p className="rounded-2xl bg-sea-50/70 px-4 py-3 text-[12.5px] leading-relaxed text-ink-600">
-              {active.summary}
-            </p>
-            <div className="md-body mt-4">
-              {active.content.split(/\n{2,}/).map((p, i) => (
-                <p key={i}>{p}</p>
-              ))}
-            </div>
-            <div className="mt-5 flex flex-wrap gap-1">
-              {active.tags.map((t) => (
-                <span key={t} className="chip">
-                  #{t}
+      <BookReader
+        book={readerBook}
+        myName={myName}
+        onClose={() => {
+          setReaderId(null)
+          if (params.get('doc')) {
+            params.delete('doc')
+            setParams(params, { replace: true })
+          }
+        }}
+        onReply={addReply}
+        onToast={setToast}
+      />
+
+      {/* 写作 / 封面设计 */}
+      <BookStudio
+        open={studio.open}
+        mode={studio.mode}
+        editing={studio.editing}
+        author={myName}
+        onClose={() => setStudio({ open: false, mode: 'create', editing: null })}
+        onSave={saveDraft}
+      />
+
+      {/* 提示：挂到 body，避免页面入场动画的 filter 改变 fixed 的定位容器 */}
+      {createPortal(
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 24 }}
+              className="pointer-events-none fixed bottom-24 left-1/2 z-[90] w-[min(92vw,420px)] -translate-x-1/2"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex items-center gap-2.5 rounded-full border border-white/80 bg-white/92 px-4 py-2.5 shadow-[0_24px_50px_-28px_rgba(46,96,112,0.7)] backdrop-blur-xl">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sea-100 to-lav-100 text-sea-600">
+                  <Icon name="heart" size={12} />
                 </span>
-              ))}
-            </div>
-            <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-white/60 pt-4">
-              <button
-                onClick={() => {
-                  closeReader()
-                  navigate(`/chat?q=${encodeURIComponent(`关于《${active.title}》，我想了解`)}`)
-                }}
-                className="btn-primary"
-              >
-                <Icon name="chat" size={15} />
-                带着这篇去问岛主
-              </button>
-              <p className="text-[10.5px] text-ink-300">科普内容不构成诊疗建议</p>
-            </div>
-          </article>
-        )}
-      </Modal>
+                <p className="text-[12px] text-ink-700">{toast}</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </div>
   )
 }

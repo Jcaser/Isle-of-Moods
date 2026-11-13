@@ -39,7 +39,7 @@ export function CommandPalette() {
     const pages: { to: string; label: string; icon: IconName; kw: string }[] = [
       { to: '/', label: '岛屿全景', icon: 'home', kw: 'home 地图 首页 island' },
       { to: '/chat', label: '岛主 · AI 对话', icon: 'chat', kw: 'chat ai 倾诉 聊天 agent' },
-      { to: '/library', label: '屿藏书阁', icon: 'book', kw: 'library 知识库 rag 文章 书' },
+      { to: '/library', label: '分享小屋', icon: 'book', kw: 'library 书墙 便签 分享 小屋 知识库 rag 文章' },
       { to: '/calm', label: '潮汐疗愈', icon: 'wave', kw: 'calm 呼吸 壁纸 正念 音频' },
       { to: '/play', label: '屿乐园', icon: 'sparkles', kw: 'play 游戏 解压 泡泡 水漂 星星' },
       { to: '/mood', label: '情绪潮向', icon: 'chart', kw: 'mood 记录 趋势 打卡' },

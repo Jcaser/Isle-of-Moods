@@ -79,7 +79,7 @@ export default function About() {
         <div className="grid gap-3 sm:grid-cols-2">
           {[
             ['岛主对话', '情绪承接 → RAG 检索 → 工具调用 → 具体动作', 'chat'],
-            ['屿藏书阁', `${KB_STATS.docs} 篇条目、${KB_STATS.chunks} 个检索片段，答案可追溯`, 'book'],
+            ['分享小屋', `书墙、便签与封面手账，另含 ${KB_STATS.docs} 篇知识库条目可追溯`, 'book'],
             ['潮汐疗愈', '4-7-8 呼吸动画、正念语音、端侧壁纸生成', 'wave'],
             ['情绪潮向', '情绪记录、趋势图、GAD-7 自评与个性化提示', 'chart'],
             ['避风港', '高危信号识别、真实热线、就医与求助步骤', 'lifebuoy'],

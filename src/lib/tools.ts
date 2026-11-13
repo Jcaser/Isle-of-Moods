@@ -24,7 +24,7 @@ export interface ToolContext {
 }
 
 export const TOOL_LABELS: Record<string, string> = {
-  search_knowledge_base: '检索屿藏书阁',
+  search_knowledge_base: '检索知识库',
   start_breathing: '唤起潮汐呼吸',
   open_anxiety_assessment: '打开 GAD-7 自评',
   create_study_plan: '生成减压复习计划',
@@ -38,7 +38,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     function: {
       name: 'search_knowledge_base',
       description:
-        '在屿藏书阁（CBT、教育心理学、睡眠、学习科学的私有知识库）中检索。当用户询问"为什么""怎么办""有什么科学依据"或需要具体方法步骤时调用，返回带出处的资料片段。',
+        '在分享小屋的知识库（CBT、教育心理学、睡眠、学习科学的私有知识库）中检索。当用户询问"为什么""怎么办""有什么科学依据"或需要具体方法步骤时调用，返回带出处的资料片段。',
       parameters: {
         type: 'object',
         properties: {

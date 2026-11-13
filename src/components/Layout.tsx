@@ -13,7 +13,7 @@ import { ScrollProgress } from './ScrollProgress'
 const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/', label: '岛屿', icon: 'home' },
   { to: '/chat', label: '岛主', icon: 'chat' },
-  { to: '/library', label: '藏书阁', icon: 'book' },
+  { to: '/library', label: '分享小屋', icon: 'book' },
   { to: '/calm', label: '潮汐', icon: 'wave' },
   { to: '/play', label: '乐园', icon: 'sparkles' },
   { to: '/mood', label: '潮向', icon: 'chart' },
