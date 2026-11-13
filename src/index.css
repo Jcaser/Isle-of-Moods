@@ -624,6 +624,26 @@ body {
   border-radius: 1.6rem;
 }
 
+/* 打水漂：投完之后的小结浮起 */
+@keyframes skipResult {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+    filter: blur(2px);
+  }
+  55% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.skip-result {
+  animation: skipResult 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 
 
 /* 路由切换：轻微上浮 + 去模糊 */
@@ -653,6 +673,170 @@ body {
 .gate-star {
   animation: twinkle 4.2s ease-in-out infinite;
 }
+
+/* 云：整层向西漂，1440 一个循环，接缝处严丝合缝 */
+@keyframes cloudDrift {
+  to { transform: translateX(-1440px); }
+}
+.gate-clouds {
+  animation: cloudDrift 150s linear infinite;
+  will-change: transform;
+}
+
+/* 水纹：外层上下起伏，内层横向流动，两层叠起来才像真的水在动 */
+@keyframes waveFlow {
+  to { transform: translateX(-1440px); }
+}
+@keyframes waveBob {
+  0%, 100% { transform: translateY(-3.4px); }
+  50% { transform: translateY(4.2px); }
+}
+.gate-wave-bob {
+  animation: waveBob 8s ease-in-out infinite;
+  will-change: transform;
+}
+.gate-wave-a,
+.gate-wave-b,
+.gate-wave-c {
+  will-change: transform;
+}
+/* 近处的浪走得快、远处的慢，才有纵深 */
+.gate-wave-a { animation: waveFlow 30s linear infinite; }
+.gate-wave-b { animation: waveFlow 44s linear infinite; }
+.gate-wave-c { animation: waveFlow 64s linear infinite; }
+
+/* 鼠标脚下的海面暖光：跟着走，轻轻呼吸 */
+@keyframes seaGlow {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+.gate-sea-light {
+  transform: translate(var(--sea-x, -400px), var(--sea-y, -400px));
+  animation: seaGlow 5.5s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* 太阳倒影：一呼一吸地闪 */
+@keyframes sunShimmer {
+  0%, 100% { opacity: 0.42; transform: translateX(0); }
+  50% { opacity: 0.68; transform: translateX(5px); }
+}
+.gate-shimmer {
+  animation: sunShimmer 7.5s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* 太阳本体：极慢的呼吸 */
+@keyframes sunBreathe {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+.gate-sun-glow,
+.gate-sun-core {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: sunBreathe 11s ease-in-out infinite;
+}
+.gate-sun-core {
+  animation-duration: 8s;
+}
+
+/* 窗与灯塔的光，轻轻明灭 */
+@keyframes lightFlicker {
+  0%, 100% { opacity: 0.72; }
+  40% { opacity: 1; }
+  62% { opacity: 0.82; }
+  78% { opacity: 0.96; }
+}
+.gate-window {
+  animation: lightFlicker 6.5s ease-in-out infinite;
+}
+
+/* 小舟：从左摇到右，两端淡入淡出（配合船身自己的起伏） */
+@keyframes sailAcross {
+  0% { transform: translateX(-190px); opacity: 0; }
+  6% { opacity: 0.92; }
+  88% { opacity: 0.92; }
+  100% { transform: translateX(560px); opacity: 0; }
+}
+.gate-sail {
+  animation: sailAcross 92s linear infinite;
+  will-change: transform;
+}
+
+/* 船尾拖出的水痕 */
+@keyframes wakeFade {
+  0%, 100% { opacity: 0; transform: translateX(0); }
+  35%, 70% { opacity: 0.8; transform: translateX(-4px); }
+}
+.gate-wake {
+  animation: wakeFade 5.6s ease-in-out infinite;
+}
+
+/* 飞鸟：横越天空 + 翅膀轻扇 */
+@keyframes flockA {
+  to { transform: translateX(-1440px); }
+}
+.gate-flock-a {
+  animation: flockA 170s linear infinite;
+  will-change: transform;
+}
+.gate-flock-b {
+  animation: flockA 230s linear infinite;
+  will-change: transform;
+}
+@keyframes gullFlap {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.5); }
+}
+.gate-gull {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: gullFlap 1.9s ease-in-out infinite;
+}
+
+/* 浮尘：缓缓上浮再淡掉 */
+@keyframes moteRise {
+  0% { transform: translateY(12px); opacity: 0; }
+  18% { opacity: 0.7; }
+  76% { opacity: 0.45; }
+  100% { transform: translateY(-64px); opacity: 0; }
+}
+.gate-mote {
+  animation: moteRise 11s ease-in-out infinite;
+  transform-box: fill-box;
+}
+
+/* 点击海面的涟漪 */
+@keyframes rippleSpread {
+  0% { transform: scale(0.16); opacity: 0; }
+  18% { opacity: 0.85; }
+  100% { transform: scale(2.3); opacity: 0; }
+}
+.gate-ripple {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rippleSpread 2.4s cubic-bezier(0.16, 0.84, 0.44, 1) forwards;
+}
+
+/* 鼠标视差：三层不同幅度，越近动得越多 */
+.gate-drift-far,
+.gate-drift-mid,
+.gate-drift-near {
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.gate-drift-far {
+  transform: translate3d(calc(var(--px, 0) * -7px), calc(var(--py, 0) * -5px), 0);
+}
+.gate-drift-mid {
+  transform: translate3d(calc(var(--px, 0) * -15px), calc(var(--py, 0) * -8px), 0);
+}
+.gate-drift-near {
+  transform: translate3d(calc(var(--px, 0) * -24px), calc(var(--py, 0) * -11px), 0);
+}
+
 
 @keyframes dotPulse {
   0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
@@ -728,6 +912,165 @@ body {
   animation: boatBob 5.5s ease-in-out infinite;
   transform-box: fill-box;
   transform-origin: center;
+}
+
+/* ── 背景乐开关（雾岸轻音） ── */
+.ambient-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 14px 0 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.66);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  backdrop-filter: blur(16px) saturate(1.15);
+  color: #326371;
+  box-shadow:
+    0 14px 30px -22px rgba(30, 70, 85, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition:
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.3s ease,
+    box-shadow 0.3s ease;
+}
+.ambient-btn:hover {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow:
+    0 18px 34px -22px rgba(30, 70, 85, 0.95),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+.ambient-btn:active {
+  transform: scale(0.96);
+}
+.ambient-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* 播放时外面一圈很轻的呼吸光 */
+.ambient-btn[data-on='true']::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-soft);
+  animation: ambientPulse 5.2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes ambientPulse {
+  0%, 100% { opacity: 0.15; transform: scale(0.97); }
+  50% { opacity: 0.6; transform: scale(1.03); }
+}
+
+.ambient-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ambient-slash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 17px;
+  height: 1.4px;
+  border-radius: 2px;
+  background: currentColor;
+  transform: translate(-50%, -50%) rotate(-45deg) scaleX(0);
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ambient-btn[data-on='false'] .ambient-slash {
+  transform: translate(-50%, -50%) rotate(-45deg) scaleX(1);
+}
+
+/* 播放中的三根小律动条 */
+.ambient-eq {
+  display: flex;
+  align-items: flex-end;
+  gap: 2.5px;
+  height: 12px;
+  width: 0;
+  margin-bottom: 1px;
+  overflow: hidden;
+  opacity: 0;
+  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
+}
+.ambient-btn[data-on='true'] .ambient-eq {
+  width: 12px;
+  opacity: 1;
+}
+.ambient-eq i {
+  width: 2.2px;
+  height: 3px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.5;
+  animation: eqBar 1.7s ease-in-out infinite;
+}
+.ambient-eq i:nth-child(2) { animation-delay: 0.3s; }
+.ambient-eq i:nth-child(3) { animation-delay: 0.62s; }
+@keyframes eqBar {
+  0%, 100% { height: 3px; opacity: 0.35; }
+  50% { height: 11px; opacity: 0.75; }
+}
+
+.ambient-name {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  transition:
+    max-width 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.3s ease;
+}
+.ambient-btn:hover .ambient-name,
+.ambient-btn:focus-visible .ambient-name {
+  max-width: 84px;
+  opacity: 0.82;
+}
+
+/* hover 时才露出来的快捷键提示 */
+.ambient-kbd {
+  display: grid;
+  place-items: center;
+  width: 0;
+  height: 15px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 0 0 1px rgba(58, 123, 141, 0.16);
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0;
+  opacity: 0;
+  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
+}
+.ambient-btn:hover .ambient-kbd,
+.ambient-btn:focus-visible .ambient-kbd {
+  width: 15px;
+  opacity: 0.7;
+}
+
+/* 提示气泡 */
+.ambient-tip {
+  max-width: 208px;
+  padding: 8px 12px;
+  border-radius: 14px 14px 5px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.9);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  font-size: 11.5px;
+  line-height: 1.65;
+  text-align: right;
+  color: #326371;
+  box-shadow: 0 16px 34px -26px rgba(30, 70, 85, 0.95);
 }
 
 @media (prefers-reduced-motion: reduce) {

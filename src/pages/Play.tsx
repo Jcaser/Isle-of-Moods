@@ -44,7 +44,7 @@ const GAMES: {
     id: 'skip',
     name: '打水漂',
     en: 'Stone Skipping',
-    desc: '按住蓄力，松手扔出去，看石头在水面弹几下。',
+    desc: '先拖动定方向，再长按蓄力，松手看石头贴着水面弹几下。',
     feel: '适合：坐立不安，想动一动',
     icon: 'wave',
     accent: 'from-[#dcf0f6] to-[#cfe7f1]',

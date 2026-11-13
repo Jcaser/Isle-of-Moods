@@ -61,7 +61,7 @@ function TraceView({ trace, citations }: { trace: ToolTraceItem[]; citations: Ci
                   <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sea-100 text-sea-600">
                     <Icon name="book" size={9} />
                   </span>
-                  <span>已从屿藏书阁检索：{citations.map((c) => c.title).join('、')}</span>
+                  <span>已从知识库检索：{citations.map((c) => c.title).join('、')}</span>
                 </div>
               )}
               {trace.map((t) => (
@@ -129,7 +129,7 @@ function CitationList({ items }: { items: Citation[] }) {
                   to={`/library?doc=${c.docId}`}
                   className="mt-1 inline-block text-[10px] text-sea-600 underline underline-offset-2"
                 >
-                  在藏书阁读全文
+                  在分享小屋读全文
                 </Link>
               </li>
             ))}
@@ -204,7 +204,7 @@ export default function Chat() {
     scrollToBottom(false)
   }, [scrollToBottom])
 
-  // 从藏书阁带问题过来时预填输入框
+  // 从分享小屋带问题过来时预填输入框
   useEffect(() => {
     const q = searchParams.get('q')
     if (q) setInput(q)
@@ -389,7 +389,7 @@ export default function Chat() {
               <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-sea-400" />
             </span>
             <div>
-              <p className="font-display text-[14px] font-semibold leading-none tracking-tight text-ink-900">屿 · 岛屿向导</p>
+              <p className="font-display text-[14px] font-semibold leading-none tracking-tight text-ink-900">岛主 · 驻岛咨询师</p>
               <p className="mt-1 text-[10px] text-ink-400">
                 {streaming ? '正在陪你想…' : settings.apiKey ? 'AI 已连接 · 引用可追溯' : '本地知识模式'}
               </p>
@@ -459,7 +459,7 @@ export default function Chat() {
               </button>
               <Link to="/library" className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-[11.5px] text-ink-600 transition hover:bg-white/70">
                 <Icon name="book" size={14} className="text-sea-500" />
-                翻翻屿藏书阁
+                翻翻分享小屋
               </Link>
             </div>
           </div>
@@ -489,10 +489,10 @@ export default function Chat() {
                     <img src="/brand/icon-256.png" alt="" className="relative h-24 w-24 object-contain animate-float" />
                   </div>
                   <h1 className="mt-4 font-display text-xl font-semibold tracking-tight text-ink-900 sm:text-2xl">
-                    靠岸了，慢慢说就好
+                    欢迎来到情绪之屿
                   </h1>
                   <p className="mt-2 max-w-md text-[13px] leading-relaxed text-ink-500">
-                    我不会催你"想开点"。你可以先说最吵的那个念头，我会先接住它，再陪你找一个此刻能做的小动作。
+                    我是岛主。你可以在这里说说心里积压的感受，我在这里听着。不用组织语言，也不用说得"合理"。
                   </p>
 
                   <div className="mt-6 grid w-full gap-2 sm:grid-cols-2">

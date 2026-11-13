@@ -64,7 +64,7 @@ export default function Home() {
 
           <p className="mt-6 max-w-lg text-[14px] leading-[1.9] text-ink-500 sm:text-[15px]">
             清绪之屿是一个面向备考学生的 AI 情绪自助空间。
-            灯塔会听你说，藏书阁给得出依据，潮汐湾负责让你慢下来，
+            灯塔会听你说，分享小屋里有人写下心事，潮汐湾负责让你慢下来，
             乐园沙滩留给学不进去的那半小时。不评判，不催促，只陪你把今天过完。
           </p>
 
@@ -278,25 +278,6 @@ export default function Home() {
         </section>
       </Reveal>
 
-      {/* ── 岛屿档案 ── */}
-      <Reveal delay={40}>
-        <section className="mt-6 grid gap-3 sm:grid-cols-4">
-          {[
-            { k: `${KB_STATS.chunks}`, u: '个知识片段', d: '本地检索，引用可展开原文' },
-            { k: '6', u: '个 Agent 工具', d: '呼吸 / 自评 / 计划 / 记录 / 趋势 / 检索' },
-            { k: '7', u: '处岛屿场景', d: '灯塔、书阁、潮汐、乐园、观测台…' },
-            { k: '0', u: '字节上传', d: '对话与情绪只存在浏览器本地' },
-          ].map((s) => (
-            <div key={s.u} className="rounded-3xl border border-white/70 bg-white/40 px-4 py-4 backdrop-blur transition hover:border-white hover:bg-white/60">
-              <p className="tnum font-display text-[22px] font-semibold tracking-tight text-ink-900">
-                {s.k}
-                <span className="ml-1.5 text-[10.5px] font-normal text-ink-400">{s.u}</span>
-              </p>
-              <p className="mt-1 text-[11px] leading-relaxed text-ink-400">{s.d}</p>
-            </div>
-          ))}
-        </section>
-      </Reveal>
     </div>
   )
 }
