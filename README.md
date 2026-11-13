@@ -142,6 +142,10 @@
 环境要求：Node.js ≥ 18（推荐 20+），npm ≥ 9。
 
 ```bash
+# 0. 克隆仓库
+git clone https://github.com/Jcaser/Isle-of-Moods.git
+cd Isle-of-Moods
+
 # 1. 安装依赖
 npm install
 
@@ -226,6 +230,18 @@ serene-isle/
 
 ---
 
+## 代码规范
+
+- **语言与类型**：全量 TypeScript，`strict: true` 且开启 `noUnusedLocals` / `noUnusedParameters`；`npm run build` 会先跑 `tsc --noEmit`，类型错误进不了产物。
+- **目录分层**：`pages`（路由页，只负责编排）/ `components`（可复用视图，按域细分，如 `library/`、`games/`）/ `lib`（纯逻辑：Agent、RAG、Canvas、音效、数据层）/ `store`（单一 Zustand store）。页面不直接读写 `localStorage`，统一走数据层与 store，便于替换后端。
+- **命名**：组件与组件文件 PascalCase；函数、变量 camelCase；常量 UPPER_SNAKE；localStorage 键统一 `sereneisle.v1.` 前缀，并按岛主 id 做命名空间隔离。
+- **注释**：每个模块顶部有一段文件级说明（负责什么、为什么这么设计）；物理常量、检索参数、正则等「魔法值」就地注明来源或调参依据；复杂交互按阶段写短注释，只解释意图，不复述代码。
+- **样式**：Tailwind 工具类 + `index.css` 中的设计令牌（色板、圆角、阴影、动效关键帧），不散落行内魔法色值；逐帧动画走 CSS 变量与 rAF，避免每帧触发 React 重渲染。
+- **可访问性**：可点元素带 `aria-label`，弹层有 `role="dialog"` 与 Esc 关闭，键盘可完成主要流程，并遵循 `prefers-reduced-motion`。
+- **提交规范**：Conventional Commits 前缀（`feat` / `fix` / `perf` / `docs` / `test` / `chore`），一次提交只做一件事，提交信息写清动机。
+
+---
+
 ## 与赛项评分维度的对应
 
 | 维度 | 权重 | 本项目实现 |
@@ -248,11 +264,16 @@ serene-isle/
 
 ## 团队
 
-- 参赛赛道：AI 健康与生活服务
-- 团队 / 学校：待补充
-- 指导老师：待补充
-- 仓库：待补充
+| 项 | 内容 |
+| --- | --- |
+| 参赛赛道 | AI 健康与生活服务 |
+| 团队成员 | 待补充 |
+| 所在学校 | 待补充 |
+| 指导老师 | 待补充 |
+| 代码仓库 | <https://github.com/Jcaser/Isle-of-Moods> |
+
+> 团队成员、所在学校与指导老师按参赛报名信息填写。
 
 ## License
 
-MIT
+MIT，详见 [LICENSE](LICENSE)。
