@@ -18,6 +18,8 @@ interface Chunk {
   title: string
   category: string
   text: string
+  /** 标题与标签，用作"是否在聊这个话题"的强信号 */
+  keys: string[]
   tokens: string[]
   tf: Map<string, number>
   len: number
@@ -44,6 +46,50 @@ const SYNONYMS: Record<string, string[]> = {
   熬夜: ['睡眠', '作息'],
   呼吸: ['4-7-8', '副交感'],
   心跳快: ['焦虑', '呼吸'],
+  记不住: ['记忆', '遗忘'],
+  背了就忘: ['记忆', '遗忘', '间隔重复'],
+  走神: ['注意力', '专注'],
+  坐不住: ['注意力', '专注'],
+  刷手机: ['手机', '拖延'],
+  摆烂: ['拖延', '自责'],
+  拖到: ['拖延', '启动'],
+  最后一晚: ['拖延', '启动'],
+  不想开始: ['拖延', '启动'],
+  deadline: ['拖延', '计划'],
+  ddl: ['拖延', '计划'],
+  还没开始: ['拖延', '启动'],
+  室友: ['宿舍', '人际'],
+  宿舍: ['室友', '人际'],
+  朋友: ['人际', '社交'],
+  我妈: ['父母', '家庭'],
+  爸妈: ['父母', '家庭'],
+  父母: ['家庭', '期待'],
+  家里: ['家庭', '父母'],
+  亲戚: ['家庭', '比较'],
+  比较: ['社会比较', '别人'],
+  别人: ['比较'],
+  失恋: ['分手', '拒绝'],
+  分手: ['失恋', '拒绝'],
+  喜欢的人: ['暗恋', '失恋'],
+  拒绝: ['失恋', '暗恋'],
+  喘不上气: ['惊恐', '过度换气', '呼吸'],
+  要死了: ['惊恐', '濒死'],
+  胃疼: ['躯体', '压力'],
+  拉肚子: ['躯体', '压力'],
+  头痛: ['躯体', '压力'],
+  暴食: ['进食', '催吐'],
+  催吐: ['进食', '暴食'],
+  减肥: ['身材', '节食'],
+  身材: ['进食', '体重'],
+  复读: ['二战', '重来'],
+  二战: ['复读'],
+  没兴趣: ['低落', '抑郁'],
+  不想起床: ['低落', '动力'],
+  没意思: ['低落', '求助'],
+  抑郁: ['低落'],
+  不够好: ['自我批评', '自我关怀'],
+  配不上: ['自我批评', '自我关怀'],
+  考不上: ['灾难化', '前途'],
 }
 
 function isCJK(ch: string): boolean {
@@ -108,6 +154,7 @@ function splitChunks(doc: KnowledgeDoc): Chunk[] {
       title: doc.title,
       category: doc.category,
       text,
+      keys: [doc.title, ...doc.tags].filter((k) => k.length >= 2),
       tokens,
       tf,
       len: tokens.length,
@@ -167,7 +214,8 @@ export function retrieve(query: string, topK = 3): Citation[] {
   const b = 0.72
 
   const querySet = [...new Set(qTokens)]
-  const scored: { c: Chunk; s: number }[] = []
+  const q = query.trim()
+  const scored: { c: Chunk; s: number; keys: number; bi: number }[] = []
 
   for (const c of chunks) {
     let score = 0
@@ -180,14 +228,37 @@ export function retrieve(query: string, topK = 3): Citation[] {
       const w = t.length >= 2 ? 1 : 0.35
       score += w * idf * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * c.len) / avgLen)))
     }
-    if (score > 0) scored.push({ c, s: score })
+
+    // 命中标题/标签 = 这段确实在聊这个话题，给一个强加分
+    const keys = c.keys.filter((k) => q.includes(k)).length
+    score += Math.min(keys, 3) * 6
+
+    // 相关性门控：没有话题锚点、命中的二元组也少于 2 个，就当作没检索到，
+    // 宁可返回空，也不要把不相关的段落塞给模型（否则会出现"问食堂菜也引用失眠"）
+    const bi = querySet.filter((t) => t.length >= 2 && c.tf.has(t)).length
+    if (!keys && bi < 2 && score < 14) continue
+
+    if (score > 0) scored.push({ c, s: score, keys, bi })
   }
 
   scored.sort((a, b2) => b2.s - a.s)
-  const top = scored.slice(0, Math.max(topK, 1))
+
+  // 同一篇只留最相关的一段：3 条引用全是同一本书，对用户没有额外信息量
+  const picked: typeof scored = []
+  const seen = new Set<string>()
+  for (const item of scored) {
+    if (seen.has(item.c.docId)) continue
+    seen.add(item.c.docId)
+    picked.push(item)
+    if (picked.length >= Math.max(topK, 1)) break
+  }
+
+  const top = picked
   const max = top[0]?.s ?? 1
 
-  return top.map(({ c, s }) => ({
+  return top
+    .filter(({ s }) => s >= max * 0.45)
+    .map(({ c, s }) => ({
     chunkId: c.id,
     docId: c.docId,
     title: c.title,
