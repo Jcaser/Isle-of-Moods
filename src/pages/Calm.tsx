@@ -1,9 +1,9 @@
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../components/Icons'
 import { PageHeader } from '../components/PageHeader'
 import { PATTERNS } from '../lib/breathing'
-import { PALETTES, WALLPAPER_QUOTES, renderWallpaper } from '../lib/wallpaper'
+import { POSTCARDS, POSTCARD_QUOTES } from '../lib/postcards'
 import { isTTSSupported, listVoices, speak, splitSentences, type VoiceOption } from '../lib/tts'
 import { useAppStore } from '../store/useAppStore'
 
@@ -229,109 +229,172 @@ function MindTab() {
   )
 }
 
-function PaperTab() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [paletteIndex, setPaletteIndex] = useState(0)
-  const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1e6))
-  const [quote, setQuote] = useState(WALLPAPER_QUOTES[0])
+function PostcardTab() {
+  const [index, setIndex] = useState(0)
+  const [quote, setQuote] = useState(POSTCARD_QUOTES[0])
+  const card = POSTCARDS[index]
 
+  // 打开这一页就把八张都预取进缓存（合计约 2.6MB 本地静态文件）：
+  // 翻到任意一张都是瞬时的，不会出现「点了没反应」或中途白一下
   useEffect(() => {
-    if (!canvasRef.current) return
-    renderWallpaper(canvasRef.current, { palette: PALETTES[paletteIndex], seed, quote })
-  }, [paletteIndex, seed, quote])
+    POSTCARDS.forEach((p) => {
+      const img = new Image()
+      img.src = p.src
+    })
+  }, [])
 
-  const download = () => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+  const next = () => setIndex((i) => (i + 1) % POSTCARDS.length)
+
+  /**
+   * 导出 1920×1080：先按 cover 铺满，再把题字叠上去。
+   * 素材放在 public 下、与页面同源，画布不会被 tainted，可直接导出。
+   */
+  const download = async () => {
+    const img = new Image()
+    img.src = card.src
+    try {
+      await img.decode()
+    } catch {
+      return
+    }
+
+    const W = 1920
+    const H = 1080
+    const canvas = document.createElement('canvas')
+    canvas.width = W
+    canvas.height = H
+    const g = canvas.getContext('2d')
+    if (!g) return
+
+    const scale = Math.max(W / img.width, H / img.height)
+    const dw = img.width * scale
+    const dh = img.height * scale
+    g.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh)
+
+    if (quote) {
+      const scrim = g.createLinearGradient(0, H * 0.52, 0, H)
+      scrim.addColorStop(0, 'rgba(0,0,0,0)')
+      scrim.addColorStop(1, 'rgba(0,0,0,0.38)')
+      g.fillStyle = scrim
+      g.fillRect(0, H * 0.52, W, H * 0.48)
+
+      g.textAlign = 'center'
+      g.fillStyle = 'rgba(255,255,255,0.95)'
+      g.font = '500 52px "Songti SC", "Noto Serif SC", serif'
+      g.fillText(quote, W / 2, H - 118)
+
+      g.fillStyle = 'rgba(255,255,255,0.55)'
+      g.font = '400 20px "Helvetica Neue", Arial, sans-serif'
+      g.fillText('S E R E N E   I S L E', W / 2, H - 70)
+    }
+
     const a = document.createElement('a')
-    a.href = canvas.toDataURL('image/png')
-    a.download = `sereneisle-wallpaper-${seed}.png`
+    a.href = canvas.toDataURL('image/jpeg', 0.92)
+    a.download = `sereneisle-postcard-${card.id}.jpg`
     a.click()
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-      <div className="glass overflow-hidden p-3">
-        <canvas
-          ref={canvasRef}
-          className="w-full rounded-3xl shadow-inner"
-          style={{ aspectRatio: '3 / 4' }}
-          aria-label="程序化生成的海岛壁纸预览"
-        />
-      </div>
+    <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
+      {/*
+        两栏从 xl 起才启用：1024–1279 之间右侧文案会换行变高，硬撑两栏就对不齐了。
+        左图用 aspect-[16/9]，图片本身即卡片、不留外框，边缘才能与右侧卡片齐平。
+      */}
+      <figure className="relative aspect-[16/9] self-start overflow-hidden rounded-4xl border border-white/70 bg-sea-100/40 shadow-soft">
+        <AnimatePresence>
+          <motion.img
+            key={card.id}
+            src={card.src}
+            alt={`明信片：${card.name}`}
+            initial={{ opacity: 0, scale: 1.02 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        </AnimatePresence>
 
-      <div className="space-y-4">
-        <div className="rounded-4xl border border-white/70 bg-white/50 p-5">
-          <h3 className="font-display text-[15px] font-semibold text-ink-900">端侧生成的海岛</h3>
-          <p className="mt-2 text-[12.5px] leading-relaxed text-ink-500">
-            天空渐变、光晕、星点、海面波光与灯塔都由 Canvas 分层绘制，配合种子随机数生成独一无二的画面。
-            不调用任何图像 API，断网也能用，画面不出浏览器。
-          </p>
-
-          <div className="mt-4">
-            <p className="label">色调</p>
-            <div className="flex flex-wrap gap-1.5">
-              {PALETTES.map((p, i) => (
-                <button
-                  key={p.name}
-                  onClick={() => setPaletteIndex(i)}
-                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11.5px] transition ${
-                    i === paletteIndex
-                      ? 'border-sea-300 bg-white/90 text-ink-900'
-                      : 'border-white/70 bg-white/45 text-ink-500 hover:bg-white/75'
-                  }`}
-                >
-                  <span
-                    className="h-3 w-3 rounded-full"
-                    style={{ background: `linear-gradient(135deg, ${p.sky[0]}, ${p.sea[1]})` }}
-                  />
-                  {p.name}
-                </button>
-              ))}
-            </div>
+        {/* 题字叠在画面底部，和明信片上手写一行字一样 */}
+        {quote && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/45 via-black/18 to-transparent px-6 pb-5 pt-16 text-center">
+            <p className="font-display text-[13.5px] font-medium tracking-wide text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)] sm:text-[15px]">
+              {quote}
+            </p>
+            <p className="mt-1.5 text-[8.5px] uppercase tracking-[0.34em] text-white/75">Serene Isle</p>
           </div>
+        )}
+      </figure>
 
-          <div className="mt-4">
-            <p className="label">写一句话（可选）</p>
-            <div className="flex flex-wrap gap-1.5">
-              {WALLPAPER_QUOTES.map((q) => (
-                <button
-                  key={q}
-                  onClick={() => setQuote(q)}
-                  className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
-                    quote === q
-                      ? 'border-sea-300 bg-sea-50 text-sea-700'
-                      : 'border-white/70 bg-white/45 text-ink-500 hover:bg-white/75'
-                  }`}
-                >
-                  {q}
-                </button>
-              ))}
+      {/* 右：说明与操作。h-full 让它与左边明信片等高 */}
+      <div className="flex h-full flex-col rounded-4xl border border-white/70 bg-white/50 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="font-display text-[15px] font-semibold text-ink-900">潮汐明信片</h3>
+          <span className="shrink-0 rounded-full bg-sea-50 px-2.5 py-1 text-[10.5px] tabular-nums text-sea-700">
+            {index + 1} / {POSTCARDS.length}
+          </span>
+        </div>
+
+        <p className="mt-1.5 text-[12px] font-medium text-ink-700">{card.name}</p>
+        <p className="mt-1 text-[12px] leading-relaxed text-ink-500">{card.scene}</p>
+
+        <div className="mt-4">
+          <p className="label">题一句话（可选）</p>
+          <div className="flex flex-wrap gap-1.5">
+            {POSTCARD_QUOTES.map((q) => (
               <button
-                onClick={() => setQuote('')}
+                key={q}
+                onClick={() => setQuote(q)}
                 className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
-                  quote === '' ? 'border-sea-300 bg-sea-50 text-sea-700' : 'border-white/70 bg-white/45 text-ink-500'
+                  quote === q
+                    ? 'border-sea-300 bg-sea-50 text-sea-700'
+                    : 'border-white/70 bg-white/45 text-ink-500 hover:bg-white/75'
                 }`}
               >
-                不写字
+                {q}
               </button>
-            </div>
+            ))}
+            <button
+              onClick={() => setQuote('')}
+              className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                quote === '' ? 'border-sea-300 bg-sea-50 text-sea-700' : 'border-white/70 bg-white/45 text-ink-500'
+              }`}
+            >
+              留白
+            </button>
           </div>
+        </div>
 
-          <div className="mt-5 flex gap-2">
-            <button onClick={() => setSeed(Math.floor(Math.random() * 1e6))} className="btn-ghost flex-1 text-[12.5px]">
+        {/* 八张的位置指示，兼作快速跳转 */}
+        <div className="mt-4 flex items-center gap-1.5">
+          {POSTCARDS.map((p, i) => (
+            <button
+              key={p.id}
+              onClick={() => setIndex(i)}
+              aria-label={`第 ${i + 1} 张：${p.name}`}
+              aria-current={i === index ? 'true' : undefined}
+              title={p.name}
+              className={`h-1.5 rounded-full transition-all ${
+                i === index ? 'w-5 bg-sea-500' : 'w-1.5 bg-ink-300/45 hover:bg-sea-300'
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* mt-auto：卡片被拉到与明信片同高时，按钮贴着底部，中间留白 */}
+        <div className="mt-auto pt-5">
+          <div className="flex gap-2">
+            <button onClick={next} className="btn-ghost flex-1 text-[12.5px]">
               <Icon name="refresh" size={15} />
               换一张
             </button>
             <button onClick={download} className="btn-primary flex-1 text-[12.5px]">
               <Icon name="download" size={15} />
-              下载 1080×1440
+              下载
             </button>
           </div>
-        </div>
-
-        <div className="rounded-3xl border border-white/70 bg-white/45 px-4 py-3 text-[11px] leading-relaxed text-ink-400">
-          小提示：设为锁屏后，每次解锁都会看到一句你想对自己说的话。
+          <p className="mt-2.5 text-[10.5px] leading-relaxed text-ink-400">
+            导出 1920×1080，适合做锁屏或打印。八张都在本地，断网也能翻。
+          </p>
         </div>
       </div>
     </div>
@@ -344,7 +407,7 @@ export default function Calm() {
   const tabs: { id: Tab; label: string; icon: 'wave' | 'volume' | 'sparkles' }[] = [
     { id: 'breath', label: '潮汐呼吸', icon: 'wave' },
     { id: 'mind', label: '正念语音', icon: 'volume' },
-    { id: 'paper', label: '海岛壁纸', icon: 'sparkles' },
+    { id: 'paper', label: '明信片', icon: 'sparkles' },
   ]
 
   return (
@@ -353,7 +416,7 @@ export default function Calm() {
         eyebrow="Tidal Therapy"
         icon={<Icon name="wave" size={13} />}
         title="潮汐疗愈"
-        desc="身体先慢下来，想法才有可能松开。这里有三条路径：跟着海浪呼吸、听一段正念引导、或给自己生成一张安静的海岛。"
+        desc="身体先慢下来，想法才有可能松开。这里有三条路径：跟着海浪呼吸、听一段正念引导、或挑一张岛上的明信片。"
       />
 
       <div className="mb-5 inline-flex rounded-full border border-white/70 bg-white/50 p-1 backdrop-blur">
@@ -379,7 +442,7 @@ export default function Calm() {
       <div className="pb-4">
         {tab === 'breath' && <BreathingTab />}
         {tab === 'mind' && <MindTab />}
-        {tab === 'paper' && <PaperTab />}
+        {tab === 'paper' && <PostcardTab />}
       </div>
     </div>
   )
