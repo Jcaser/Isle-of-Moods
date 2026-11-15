@@ -1,10 +1,11 @@
 /**
  * Agent 工具层（Function Calling）
  *
- * 每个工具都做了"双重职责"设计：
- *   1) 返回结构化文本给模型，让模型能用自然语言继续对话；
- *   2) 通过 ToolContext 触发真实的前端副作用（开呼吸面板、开量表、写情绪记录）。
- * 这样 AI 的"决策"能落地成界面动作，而不是只停留在文字建议。
+ * 每个工具有两个产出：
+ *   1) 结构化文本，回给模型让它继续说话；
+ *   2) 可选的一个「待确认动作」（PendingAction）。注意是"待确认"——工具绝不自己弹窗或跳页：
+ *      岛主会先把话说完，界面上再出现「好，打开 / 先不用」，用户点了才真的执行。
+ *      这样不会出现"回答还没出来，面板已经弹出来盖住屏幕"的打断感。
  */
 
 import { retrieve } from './rag'
@@ -15,12 +16,9 @@ import type { ToolSchema } from './llm'
 import { LEVEL_META } from './assessment'
 
 export interface ToolContext {
-  openBreathing: (pattern?: '478' | 'box' | 'coherent') => void
-  openAssessment: () => void
   addMood: (record: Omit<MoodRecord, 'id' | 'ts'>) => void
   getRecords: () => MoodRecord[]
   getAssessments: () => AssessmentRecord[]
-  navigate: (path: string) => void
 }
 
 export const TOOL_LABELS: Record<string, string> = {
@@ -229,19 +227,29 @@ export async function runTool(
         const pattern = (['478', 'box', 'coherent'] as const).includes(args.pattern)
           ? (args.pattern as '478' | 'box' | 'coherent')
           : '478'
-        ctx.openBreathing(pattern)
         const map = {
-          '478': '4-7-8 呼吸：吸 4 秒、屏 7 秒、呼 8 秒。呼气长于吸气，帮助心率降下来。已在界面上为你打开引导。',
-          box: '箱式呼吸：吸 4、屏 4、呼 4、屏 4。适合进入专注前使用，已在界面上打开。',
-          coherent: '共振呼吸：吸 5、呼 5，约每分钟 6 次，是稳住日常状态的常用节奏，已在界面上打开。',
+          '478': { title: '4-7-8 呼吸引导', hint: '吸 4 秒、屏 7 秒、呼 8 秒，呼气比吸气长' },
+          box: { title: '箱式呼吸引导', hint: '吸 4、屏 4、呼 4、屏 4，适合专注前' },
+          coherent: { title: '共振呼吸引导', hint: '吸 5、呼 5，约每分钟 6 次' },
         } as const
-        return ok(map[pattern], { payload: { pattern } })
+        const m = map[pattern]
+        // 只提议，不执行：回答说完后界面会出现「好，打开 / 先不用」
+        return ok(
+          `已向用户提议打开「${m.title}」（${m.hint}）。界面上会出现一个确认按钮，他点了才会真的打开。你可以在回答里邀请他试试，但不要说"已经打开了"。`,
+          { action: { kind: 'breathing', pattern, title: m.title, hint: m.hint } },
+        )
       }
 
       case 'open_anxiety_assessment': {
-        ctx.openAssessment()
         return ok(
-          '已打开 GAD-7 焦虑自评（7 题，回顾过去两周）。请用户按真实感受作答，不要替用户猜测分数；结果出来后结合分数给出下一步，并说明这只是筛查不是诊断。',
+          '已向用户提议打开 GAD-7 焦虑自评（7 题，回顾过去两周），他点了确认才会开始。你可以邀请他做，并说明这是筛查不是诊断，但不要说"已经打开了"。',
+          {
+            action: {
+              kind: 'assessment',
+              title: 'GAD-7 焦虑自评',
+              hint: '7 个问题，回顾过去两周，约 2 分钟',
+            },
+          },
         )
       }
 

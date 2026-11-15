@@ -8,7 +8,7 @@ import { aiExhausted, aiReady, formatTokens } from '../lib/ai'
 import { isProxy } from '../lib/llm'
 import { summarize } from '../lib/mood'
 import { TOOL_LABELS } from '../lib/tools'
-import type { ChatMessage, RiskLevel, ToolTraceItem } from '../lib/types'
+import type { ChatMessage, PendingAction, RiskLevel, ToolTraceItem } from '../lib/types'
 import { isASRSupported, startRecognition } from '../lib/tts'
 import { useAppStore } from '../store/useAppStore'
 import { Icon } from '../components/Icons'
@@ -138,10 +138,12 @@ export default function Chat() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const pendingContent = useRef('')
-  const metaRef = useRef<{ trace: ToolTraceItem[]; risk: RiskLevel; quota?: string }>({
-    trace: [],
-    risk: 'none',
-  })
+  const metaRef = useRef<{
+    trace: ToolTraceItem[]
+    risk: RiskLevel
+    quota?: string
+    action?: PendingAction
+  }>({ trace: [], risk: 'none' })
   const abortedRef = useRef(false)
 
   const streaming = live !== null
@@ -201,7 +203,7 @@ export default function Chat() {
       const controller = new AbortController()
       abortRef.current = controller
       pendingContent.current = ''
-      metaRef.current = { trace: [], risk: 'none' }
+      metaRef.current = { trace: [], risk: 'none', action: undefined }
       abortedRef.current = false
       setLive({ content: '', trace: [], risk: 'none', mode: cloud ? 'cloud' : 'local' })
 
@@ -212,17 +214,16 @@ export default function Chat() {
         records: useAppStore.getState().records,
         assessments: useAppStore.getState().assessments,
         ctx: {
-          openBreathing,
-          openAssessment: () => setAssessmentOpen(true),
           addMood: (r) => addMood(r),
           getRecords: () => useAppStore.getState().records,
           getAssessments: () => useAppStore.getState().assessments,
-          navigate: () => {},
         },
         signal: controller.signal,
         cloud,
         onEvent: (ev) => {
           if (ev.type === 'risk') metaRef.current.risk = ev.level
+          // 必须在 setLive 之外赋值：updater 的执行时机不确定，容易晚于消息落库
+          if (ev.type === 'done' && ev.action) metaRef.current.action = ev.action
           if (ev.type === 'quota_exhausted') {
             metaRef.current.quota = ev.message
             void refreshAi()
@@ -289,6 +290,7 @@ export default function Chat() {
           trace: metaRef.current.trace,
           risk: metaRef.current.risk,
           offline: !cloud,
+          action: metaRef.current.action,
         })
       }
       // 用完一次就同步一次用量，横幅上的数字才是真的
@@ -319,6 +321,7 @@ export default function Chat() {
         trace: metaRef.current.trace,
         risk: metaRef.current.risk,
         offline: !cloudNow,
+        action: metaRef.current.action,
       })
     }
     setLive(null)
@@ -603,6 +606,7 @@ function MessageRow({ message }: { message: ChatMessage }) {
           <div className="md-body">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
           </div>
+          <ActionPrompt message={message} />
         </div>
         <div className="mt-1.5 flex items-center gap-2 px-1 text-[10px] text-ink-300">
           <span>
@@ -610,6 +614,67 @@ function MessageRow({ message }: { message: ChatMessage }) {
           </span>
           {message.offline && <span className="chip text-[9px]">本地知识模式</span>}
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 岛主提议的界面动作确认条。
+ *
+ * 顺序很重要：回答已经完整显示在气泡里了，这里才问「要不要去」。
+ * 用户点「好，打开」才真的开呼吸面板 / 量表；点「先不用」就留在原地，不打断对话。
+ */
+function ActionPrompt({ message }: { message: ChatMessage }) {
+  const openBreathing = useAppStore((s) => s.openBreathing)
+  const setAssessmentOpen = useAppStore((s) => s.setAssessmentOpen)
+  const patchMessage = useAppStore((s) => s.patchMessage)
+
+  const action = message.action
+  if (!action) return null
+
+  if (message.actionState === 'done') {
+    return (
+      <p className="mt-2.5 flex items-center gap-1.5 border-t border-white/70 pt-2.5 text-[10.5px] text-ink-300">
+        <Icon name="check" size={11} className="text-sea-500" />
+        已为你打开「{action.title}」
+      </p>
+    )
+  }
+  if (message.actionState === 'skipped') {
+    return (
+      <p className="mt-2.5 border-t border-white/70 pt-2.5 text-[10.5px] text-ink-300">
+        已先跳过「{action.title}」，想试的时候随时跟我说
+      </p>
+    )
+  }
+
+  const run = () => {
+    if (action.kind === 'breathing') openBreathing(action.pattern ?? '478')
+    else setAssessmentOpen(true)
+    patchMessage(message.id, { actionState: 'done' })
+  }
+
+  return (
+    <div className="mt-3 rounded-2xl border border-sea-200/70 bg-sea-50/70 px-3.5 py-3">
+      <p className="flex items-center gap-1.5 text-[11.5px] font-medium text-ink-800">
+        <Icon name="sparkles" size={12} className="text-sea-500" />
+        要我帮你打开「{action.title}」吗？
+      </p>
+      <p className="mt-1 text-[10.5px] leading-relaxed text-ink-400">{action.hint}</p>
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        <button
+          onClick={run}
+          className="rounded-full bg-sea-500 px-3.5 py-1.5 text-[11px] font-medium text-white shadow-[0_6px_16px_-10px_rgba(58,123,141,0.9)] transition hover:bg-sea-600"
+        >
+          好，打开
+        </button>
+        <button
+          onClick={() => patchMessage(message.id, { actionState: 'skipped' })}
+          className="rounded-full border border-white/80 bg-white/70 px-3.5 py-1.5 text-[11px] text-ink-500 transition hover:bg-white"
+        >
+          先不用
+        </button>
       </div>
     </div>
   )

@@ -12,7 +12,17 @@ import { buildContextBlock, retrieve } from './rag'
 import { CRISIS_SYSTEM_NOTE, detectRisk } from './crisis'
 import { MOOD_META, summarize } from './mood'
 import { LEVEL_META } from './assessment'
-import type { AssessmentRecord, ChatMessage, Citation, MoodRecord, RiskLevel, Settings, ToolCall, ToolResult } from './types'
+import type {
+  AssessmentRecord,
+  ChatMessage,
+  Citation,
+  MoodRecord,
+  PendingAction,
+  RiskLevel,
+  Settings,
+  ToolCall,
+  ToolResult,
+} from './types'
 
 export type AgentEvent =
   | { type: 'mode'; mode: 'cloud' | 'local' }
@@ -22,7 +32,8 @@ export type AgentEvent =
   | { type: 'risk'; level: RiskLevel }
   | { type: 'error'; message: string }
   | { type: 'quota_exhausted'; message: string }
-  | { type: 'done'; content: string }
+  /** action：岛主想打开的界面，交给前端在回答之后询问用户，同意才执行 */
+  | { type: 'done'; content: string; action?: PendingAction }
 
 /**
  * 人设提示词。
@@ -149,7 +160,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
     onEvent({ type: 'mode', mode: 'local' })
     const text = offlineRespond(userText, citations, risk.level)
     await typeOut(text, onEvent, signal)
-    onEvent({ type: 'done', content: text })
+    onEvent({ type: 'done', content: text, action: localAction(userText) })
     return
   }
 
@@ -165,6 +176,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
   ]
 
   let full = ''
+  /** 工具只会"提议"界面动作，这里先收集，等回答流完再交给前端去问用户 */
+  let pendingAction: PendingAction | undefined
   // 最多 2 步：每多一步都要把整段上下文重发一次，都是在烧额度
   const MAX_STEPS = 2
 
@@ -202,6 +215,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
           label: TOOL_LABELS[call.name] ?? call.name,
         })
         const result = await runTool(call.name, call.arguments, ctx, call.id)
+        if (result.action && !pendingAction) pendingAction = result.action
         onEvent({ type: 'tool_end', result })
         messages.push({
           role: 'tool',
@@ -216,7 +230,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
       full = text
       onEvent({ type: 'delta', text })
     }
-    onEvent({ type: 'done', content: full })
+    onEvent({ type: 'done', content: full, action: pendingAction })
   } catch (e) {
     if (signal.aborted) return
 
@@ -230,7 +244,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
         full = text
         onEvent({ type: 'delta', text })
       }
-      onEvent({ type: 'done', content: full })
+      onEvent({ type: 'done', content: full, action: pendingAction })
       return
     }
 
@@ -240,10 +254,21 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
     const fallback = offlineRespond(userText, citations, risk.level)
     if (!full.trim()) {
       await typeOut(fallback, onEvent, signal)
-      onEvent({ type: 'done', content: fallback })
+      onEvent({ type: 'done', content: fallback, action: pendingAction ?? localAction(userText) })
     } else {
-      onEvent({ type: 'done', content: full })
+      onEvent({ type: 'done', content: full, action: pendingAction })
     }
+  }
+}
+
+/** 本地模式没有模型判断，用规则决定要不要提议呼吸引导（同样需要用户点确认） */
+function localAction(text: string): PendingAction | undefined {
+  if (!/(紧张|心慌|慌|焦虑|睡不着|失眠|放松|呼吸|手抖|坐不住|喘不上气)/.test(text)) return undefined
+  return {
+    kind: 'breathing',
+    pattern: '478',
+    title: '4-7-8 呼吸引导',
+    hint: '吸 4 秒、屏 7 秒、呼 8 秒，呼气比吸气长',
   }
 }
 
@@ -378,7 +403,7 @@ const INTENTS: Intent[] = [
 
 现在跟我做 **4-7-8 呼吸**：用鼻子安静吸气 **4 秒**，轻轻屏住 **7 秒**，再用嘴缓慢呼气 **8 秒**。关键是呼气比吸气长——它会通过迷走神经把心率压下来。做 4 个循环，大约 1 分钟。
 
-我已经把引导面板给你打开了，跟着潮汐的节奏就好。做完之后告诉我：心跳有没有下来一点？`,
+如果你愿意，我可以把引导面板叫出来陪你一起数节拍；不想开也没关系，就照上面的节奏自己做。做完告诉我：心跳有没有下来一点？`,
   },
   {
     test: /(学不进去|拖延|刷手机|效率低|静不下|专注|内耗)/,
