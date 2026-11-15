@@ -8,7 +8,6 @@ import { MoodChart } from '../components/MoodChart'
 import { Reveal } from '../components/Reveal'
 import { buildSeries, insightOf, summarize } from '../lib/mood'
 import { MOMENTS, loadMoment, type Moment } from '../lib/moment'
-import { KB_STATS } from '../lib/rag'
 import { useAppStore } from '../store/useAppStore'
 
 export default function Home() {
@@ -83,20 +82,6 @@ export default function Home() {
             </Link>
           </div>
 
-          <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] text-ink-400">
-            <span className="flex items-center gap-1.5">
-              <Icon name="shield" size={13} className="text-sea-400" />
-              本地账号 · 数据不出本机
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Icon name="book" size={13} className="text-sea-400" />
-              {KB_STATS.docs} 篇知识条目可追溯
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Icon name="lifebuoy" size={13} className="text-coral-400" />
-              24h 援助热线 12356
-            </span>
-          </div>
         </motion.div>
 
         {/* 视觉主体 */}
@@ -135,41 +120,6 @@ export default function Home() {
               </div>
             </div>
 
-            <motion.div
-              initial={{ opacity: 0, x: -14 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.6 }}
-              className="glass absolute -left-2 top-[15%] flex items-center gap-2 rounded-2xl px-3 py-2 text-[11px] text-ink-600 sm:left-0"
-            >
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sea-100 text-sea-600">
-                <Icon name="wave" size={13} />
-              </span>
-              4-7-8 潮汐呼吸
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, x: 14 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.75 }}
-              className="glass absolute -right-1 top-[35%] flex items-center gap-2 rounded-2xl px-3 py-2 text-[11px] text-ink-600 sm:right-0"
-            >
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-lav-100 text-lav-500">
-                <Icon name="book" size={13} />
-              </span>
-              RAG 本地检索
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.9 }}
-              className="glass absolute bottom-[9%] left-[10%] flex items-center gap-2 rounded-2xl px-3 py-2 text-[11px] text-ink-600"
-            >
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sand-100 text-[#b79a6a]">
-                <Icon name="sparkles" size={13} />
-              </span>
-              四个解压小游戏
-            </motion.div>
           </div>
         </motion.div>
 
@@ -183,17 +133,11 @@ export default function Home() {
 
       {/* ── 岛屿全景 ── */}
       <Reveal>
-        <div className="mb-3 flex items-end justify-between">
-          <div>
-            <p className="text-[10.5px] font-semibold uppercase tracking-[0.26em] text-sea-500">Walk the island</p>
-            <h2 className="mt-1.5 font-display text-[22px] font-semibold tracking-tight text-ink-900 sm:text-[26px]">
-              岛上六处，随便挑一处上岸
-            </h2>
-          </div>
-          <Link to="/about" className="hidden items-center gap-1 text-[12px] text-ink-400 transition hover:text-ink-900 sm:flex">
-            项目说明
-            <Icon name="arrowRight" size={14} />
-          </Link>
+        <div className="mb-3">
+          <p className="text-[10.5px] font-semibold uppercase tracking-[0.26em] text-sea-500">Walk the island</p>
+          <h2 className="mt-1.5 font-display text-[22px] font-semibold tracking-tight text-ink-900 sm:text-[26px]">
+            岛上六处，随便挑一处上岸
+          </h2>
         </div>
       </Reveal>
 

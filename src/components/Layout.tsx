@@ -142,8 +142,6 @@ function UserMenu() {
 }
 
 function Nav() {
-  const setSettingsOpen = useAppStore((s) => s.setSettingsOpen)
-  const hasKey = useAppStore((s) => Boolean(s.settings.apiKey))
   const { pathname } = useLocation()
   const [scrolled, setScrolled] = useState(false)
 
@@ -202,16 +200,6 @@ function Nav() {
         </nav>
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => setSettingsOpen(true)}
-            className={`hidden items-center gap-1.5 rounded-full border border-white/80 px-3 py-1.5 text-[11px] font-medium transition lg:flex ${
-              hasKey ? 'bg-sea-50/90 text-sea-600' : 'bg-white/70 text-ink-500 hover:bg-white'
-            }`}
-            aria-label="打开设置"
-          >
-            <span className={`h-1.5 w-1.5 rounded-full ${hasKey ? 'bg-sea-400' : 'bg-coral-400'}`} />
-            {hasKey ? 'AI 已连接' : '本地模式'}
-          </button>
-          <button
             onClick={() => window.dispatchEvent(new Event('serene:palette'))}
             className="hidden items-center gap-1 rounded-full border border-white/80 bg-white/50 px-2 py-1 text-[10px] text-ink-400 transition hover:bg-white/90 hover:text-ink-700 sm:flex"
             aria-label="打开快捷命令"
@@ -219,13 +207,6 @@ function Nav() {
           >
             <Icon name="compass" size={12} />
             <span className="tracking-wide">⌘K</span>
-          </button>
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="btn-quiet h-9 w-9 rounded-full p-0"
-            aria-label="设置"
-          >
-            <Icon name="settings" size={18} />
           </button>
           <UserMenu />
         </div>

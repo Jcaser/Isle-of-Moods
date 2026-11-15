@@ -364,14 +364,22 @@ export default function Chat() {
           </Link>
           <div className="flex items-center gap-2.5">
             <span className="relative">
-              <img src="/brand/icon-128.png" alt="" className="h-9 w-9 object-contain" />
+              <span className="block h-9 w-9 overflow-hidden rounded-xl border border-white/90 shadow-[0_8px_18px_-14px_rgba(46,96,112,0.9)]">
+                <img
+                  src="/brand/keeper-rabbit.jpg"
+                  alt="岛主"
+                  className="h-full w-full scale-[1.16] object-cover"
+                />
+              </span>
               <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-sea-400" />
             </span>
             <div>
               <p className="font-display text-[14px] font-semibold leading-none tracking-tight text-ink-900">岛主 · 驻岛咨询师</p>
-              <p className="mt-1 text-[10px] text-ink-400">
-                {streaming ? '正在陪你想…' : exhausted ? '额度已用完 · 本地模式' : cloudNow ? 'AI 已连接 · 可随时中断' : '本地知识模式'}
-              </p>
+              {(streaming || exhausted || !cloudNow) && (
+                <p className="mt-1 text-[10px] text-ink-400">
+                  {streaming ? '正在陪你想…' : exhausted ? '额度已用完 · 本地模式' : '本地知识模式'}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -465,7 +473,9 @@ export default function Chat() {
                 <div className="flex flex-col items-center pt-6 text-center sm:pt-12">
                   <div className="relative h-24 w-24">
                     <div className="absolute inset-2 rounded-full bg-sea-200/40 blur-xl" />
-                    <img src="/brand/icon-256.png" alt="" className="relative h-24 w-24 object-contain animate-float" />
+                    <span className="relative block h-24 w-24 animate-float overflow-hidden rounded-3xl border border-white/90 shadow-[0_22px_44px_-30px_rgba(46,96,112,0.9)]">
+                      <img src="/brand/keeper-rabbit.jpg" alt="岛主" className="h-full w-full scale-[1.1] object-cover" />
+                    </span>
                   </div>
                   <h1 className="mt-4 font-display text-xl font-semibold tracking-tight text-ink-900 sm:text-2xl">
                     欢迎来到情绪之屿
@@ -598,7 +608,9 @@ function MessageRow({ message }: { message: ChatMessage }) {
 
   return (
     <div className="flex gap-2.5">
-      <img src="/brand/icon-128.png" alt="" className="mt-0.5 h-8 w-8 shrink-0 object-contain" />
+      <span className="mt-0.5 block h-8 w-8 shrink-0 overflow-hidden rounded-xl border border-white/80">
+        <img src="/brand/keeper-rabbit.jpg" alt="" className="h-full w-full scale-[1.16] object-cover" />
+      </span>
       <div className="min-w-0 flex-1">
         {message.risk && <RiskCard level={message.risk} />}
         {message.trace && message.trace.length > 0 && <TraceView trace={message.trace} />}
@@ -684,7 +696,9 @@ function LiveRow({ live, onStop }: { live: LiveState; onStop: () => void }) {
   const thinking = !live.content
   return (
     <div className="flex gap-2.5">
-      <img src="/brand/icon-128.png" alt="" className="mt-0.5 h-8 w-8 shrink-0 object-contain" />
+      <span className="mt-0.5 block h-8 w-8 shrink-0 overflow-hidden rounded-xl border border-white/80">
+        <img src="/brand/keeper-rabbit.jpg" alt="" className="h-full w-full scale-[1.16] object-cover" />
+      </span>
       <div className="min-w-0 flex-1">
         {live.risk && <RiskCard level={live.risk} />}
         {live.trace.length > 0 && <TraceView trace={live.trace} />}

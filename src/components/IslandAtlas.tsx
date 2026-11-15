@@ -371,7 +371,7 @@ export function IslandAtlas() {
   })
 
   return (
-    <div id="atlas" className="grid scroll-mt-24 items-start gap-4 lg:grid-cols-[1.52fr_1fr]">
+    <div id="atlas" className="grid scroll-mt-24 items-stretch gap-4 lg:grid-cols-[1.52fr_1fr]">
       {/* ── 地图 ── */}
       <div className="relative overflow-hidden rounded-5xl border border-white/70 bg-white/40 shadow-soft backdrop-blur-sm">
         {/* 海图角标，给整块地图一个"图鉴"的画框感 */}
@@ -894,7 +894,7 @@ export function IslandAtlas() {
       </div>
 
       {/* ── 地点面板 ── */}
-      <div className="relative flex min-h-[30rem] flex-col overflow-hidden rounded-5xl border border-white/70 bg-white/55 p-5 shadow-soft backdrop-blur-md sm:p-6">
+      <div className="relative flex h-full min-h-[30rem] flex-col overflow-hidden rounded-5xl border border-white/70 bg-white/55 p-5 shadow-soft backdrop-blur-md sm:p-6">
         <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-lav-100/60 blur-2xl" />
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.div
@@ -1008,10 +1008,13 @@ export function IslandAtlas() {
               )}
             </div>
 
-            <button onClick={enter} className="btn-primary mt-5 w-full py-2.5 text-[13px]">
-              {spot.action === 'breathe' ? '开始一次呼吸' : `进入${spot.name.split(' · ')[0]}`}
-              <Icon name="arrowRight" size={15} />
-            </button>
+            {/* mt-auto：卡片被拉伸到与地图同高时，把主按钮压在底部，中间留白而不是底部塌空 */}
+            <div className="mt-auto pt-5">
+              <button onClick={enter} className="btn-primary w-full py-2.5 text-[13px]">
+                {spot.action === 'breathe' ? '开始一次呼吸' : `进入${spot.name.split(' · ')[0]}`}
+                <Icon name="arrowRight" size={15} />
+              </button>
+            </div>
           </motion.div>
         </AnimatePresence>
       </div>
