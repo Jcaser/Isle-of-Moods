@@ -43,7 +43,7 @@ export function KnowledgePane({ focusDocId }: { focusDocId?: string | null }) {
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
         <p className="max-w-2xl text-[12.5px] leading-relaxed text-ink-500">
-          岛主的私人知识库：教育心理学、CBT、睡眠与学习科学，其中一部方法条目改写自《认知行为疗法：基础与应用》《理智胜过情感》《伯恩斯新情绪疗法》，篇末可查看依据。岛主回答时会先在这里检索并标注出处——用检索约束生成，减少一本正经的胡说。
+          岛主的私人知识库：教育心理学、CBT、睡眠与学习科学，其中一部方法条目改写自《认知行为疗法：基础与应用》《理智胜过情感》《伯恩斯新情绪疗法》，篇末可查看依据。岛主回答时会先在这里检索，把要点融进自己的话里，不再单独展示出处。
         </p>
         <div className="flex gap-2">
           <div className="rounded-2xl border border-white/70 bg-white/55 px-3.5 py-1.5 text-center">
@@ -89,7 +89,7 @@ export function KnowledgePane({ focusDocId }: { focusDocId?: string | null }) {
         <Icon name="sparkles" size={14} className="mt-0.5 shrink-0 text-lav-400" />
         <p>
           检索采用<strong className="font-medium text-ink-700">本地 BM25 + 中文二元组分词 + 同义扩展</strong>
-          ，按段落切块，答案中引用的编号可点开原文对照。所有计算在浏览器内完成，不上传任何内容。
+          ，按段落切块。检索与匹配全部在浏览器内完成，不上传任何内容。
         </p>
       </div>
 

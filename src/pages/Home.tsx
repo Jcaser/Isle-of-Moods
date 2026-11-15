@@ -156,7 +156,7 @@ export default function Home() {
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-lav-100 text-lav-500">
                 <Icon name="book" size={13} />
               </span>
-              RAG 引用可追溯
+              RAG 本地检索
             </motion.div>
 
             <motion.div

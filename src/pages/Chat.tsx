@@ -8,8 +8,7 @@ import { aiExhausted, aiReady, formatTokens } from '../lib/ai'
 import { isProxy } from '../lib/llm'
 import { summarize } from '../lib/mood'
 import { TOOL_LABELS } from '../lib/tools'
-import type { ChatMessage, Citation, RiskLevel, ToolTraceItem } from '../lib/types'
-import { docById } from '../lib/rag'
+import type { ChatMessage, RiskLevel, ToolTraceItem } from '../lib/types'
 import { isASRSupported, startRecognition } from '../lib/tts'
 import { useAppStore } from '../store/useAppStore'
 import { Icon } from '../components/Icons'
@@ -25,7 +24,6 @@ const SUGGESTIONS = [
 interface LiveState {
   content: string
   trace: ToolTraceItem[]
-  citations: Citation[]
   risk: RiskLevel
   mode: 'cloud' | 'local'
   error?: string
@@ -35,9 +33,10 @@ interface LiveState {
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
-function TraceView({ trace, citations }: { trace: ToolTraceItem[]; citations: Citation[] }) {
+/** 只展示「调用了哪个工具」，不展示任何知识库出处 */
+function TraceView({ trace }: { trace: ToolTraceItem[] }) {
   const [open, setOpen] = useState(false)
-  if (!trace.length && !citations.length) return null
+  if (!trace.length) return null
 
   return (
     <div className="mb-2">
@@ -47,8 +46,7 @@ function TraceView({ trace, citations }: { trace: ToolTraceItem[]; citations: Ci
         aria-expanded={open}
       >
         <Icon name="sparkles" size={12} className="text-lav-400" />
-        {citations.length > 0 && <span>检索 {citations.length} 条资料</span>}
-        {trace.length > 0 && <span>· 调用 {trace.length} 个工具</span>}
+        <span>调用 {trace.length} 个工具</span>
         <Icon name="arrowRight" size={11} className={`transition ${open ? 'rotate-90' : ''}`} />
       </button>
 
@@ -61,14 +59,6 @@ function TraceView({ trace, citations }: { trace: ToolTraceItem[]; citations: Ci
             className="overflow-hidden"
           >
             <div className="mt-2 space-y-1.5 rounded-2xl border border-white/60 bg-white/45 p-3">
-              {citations.length > 0 && (
-                <div className="flex items-start gap-2 text-[10.5px] leading-relaxed text-ink-500">
-                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sea-100 text-sea-600">
-                    <Icon name="book" size={9} />
-                  </span>
-                  <span>已从知识库检索：{citations.map((c) => c.title).join('、')}</span>
-                </div>
-              )}
               {trace.map((t) => (
                 <div key={t.id} className="flex items-start gap-2 text-[10.5px] leading-relaxed text-ink-500">
                   <span
@@ -96,61 +86,10 @@ function TraceView({ trace, citations }: { trace: ToolTraceItem[]; citations: Ci
   )
 }
 
-function CitationList({ items }: { items: Citation[] }) {
-  const [open, setOpen] = useState(false)
-  if (!items.length) return null
-  const unique = items.filter((c, i, arr) => arr.findIndex((x) => x.docId === c.docId) === i)
-
-  return (
-    <div className="mt-3">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-[10.5px] font-medium text-sea-600 transition hover:text-sea-700"
-        aria-expanded={open}
-      >
-        <Icon name="book" size={12} />
-        {open ? '收起出处' : `查看 ${unique.length} 条出处`}
-        <Icon name="arrowRight" size={11} className={`transition ${open ? 'rotate-90' : ''}`} />
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.ul
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mt-2 space-y-2 overflow-hidden"
-          >
-            {unique.map((c, i) => (
-              <li key={c.chunkId} className="rounded-2xl border border-white/70 bg-white/55 px-3 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-medium text-ink-800">
-                    <span className="mr-1 text-sea-500">[{i + 1}]</span>
-                    {c.title}
-                  </p>
-                  <span className="chip shrink-0 text-[9.5px]">{c.category}</span>
-                </div>
-                <p className="mt-1 text-[10.5px] leading-relaxed text-ink-500">{c.snippet}</p>
-                {docById(c.docId)?.sources?.[0] && (
-                  <p className="mt-1 flex items-start gap-1 text-[9.5px] leading-relaxed text-ink-300">
-                    <span className="mt-[4px] h-1 w-1 shrink-0 rounded-full bg-[#c8a97e]" />
-                    <span>依据：{docById(c.docId)?.sources?.[0]}</span>
-                  </p>
-                )}
-                <Link
-                  to={`/library?doc=${c.docId}`}
-                  className="mt-1 inline-block text-[10px] text-sea-600 underline underline-offset-2"
-                >
-                  在分享小屋读全文
-                </Link>
-              </li>
-            ))}
-          </motion.ul>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
-
+/**
+ * 对话里不再向用户展示知识库出处。
+ * 检索依然在本地进行、结果依然作为依据注入模型，只是不呈现给用户看。
+ */
 function RiskCard({ level }: { level: RiskLevel }) {
   if (level !== 'high' && level !== 'medium') return null
   return (
@@ -199,9 +138,8 @@ export default function Chat() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const pendingContent = useRef('')
-  const metaRef = useRef<{ trace: ToolTraceItem[]; citations: Citation[]; risk: RiskLevel; quota?: string }>({
+  const metaRef = useRef<{ trace: ToolTraceItem[]; risk: RiskLevel; quota?: string }>({
     trace: [],
-    citations: [],
     risk: 'none',
   })
   const abortedRef = useRef(false)
@@ -263,9 +201,9 @@ export default function Chat() {
       const controller = new AbortController()
       abortRef.current = controller
       pendingContent.current = ''
-      metaRef.current = { trace: [], citations: [], risk: 'none' }
+      metaRef.current = { trace: [], risk: 'none' }
       abortedRef.current = false
-      setLive({ content: '', trace: [], citations: [], risk: 'none', mode: cloud ? 'cloud' : 'local' })
+      setLive({ content: '', trace: [], risk: 'none', mode: cloud ? 'cloud' : 'local' })
 
       await runAgent({
         userText: text,
@@ -284,7 +222,6 @@ export default function Chat() {
         signal: controller.signal,
         cloud,
         onEvent: (ev) => {
-          if (ev.type === 'citations') metaRef.current.citations = ev.items
           if (ev.type === 'risk') metaRef.current.risk = ev.level
           if (ev.type === 'quota_exhausted') {
             metaRef.current.quota = ev.message
@@ -311,14 +248,12 @@ export default function Chat() {
           if (ev.type === 'delta') pendingContent.current += ev.text
 
           setLive((prev) => {
-            const base: LiveState = prev ?? { content: '', trace: [], citations: [], risk: 'none', mode: 'cloud' }
+            const base: LiveState = prev ?? { content: '', trace: [], risk: 'none', mode: 'cloud' }
             switch (ev.type) {
               case 'delta':
                 return { ...base, content: pendingContent.current }
               case 'mode':
                 return { ...base, mode: ev.mode }
-              case 'citations':
-                return { ...base, citations: ev.items }
               case 'risk':
                 return { ...base, risk: ev.level }
               case 'tool_start':
@@ -352,7 +287,6 @@ export default function Chat() {
           content: final,
           ts: Date.now(),
           trace: metaRef.current.trace,
-          citations: metaRef.current.citations,
           risk: metaRef.current.risk,
           offline: !cloud,
         })
@@ -383,7 +317,6 @@ export default function Chat() {
         content,
         ts: Date.now(),
         trace: metaRef.current.trace,
-        citations: metaRef.current.citations,
         risk: metaRef.current.risk,
         offline: !cloudNow,
       })
@@ -434,7 +367,7 @@ export default function Chat() {
             <div>
               <p className="font-display text-[14px] font-semibold leading-none tracking-tight text-ink-900">岛主 · 驻岛咨询师</p>
               <p className="mt-1 text-[10px] text-ink-400">
-                {streaming ? '正在陪你想…' : exhausted ? '额度已用完 · 本地模式' : cloudNow ? 'AI 已连接 · 引用可追溯' : '本地知识模式'}
+                {streaming ? '正在陪你想…' : exhausted ? '额度已用完 · 本地模式' : cloudNow ? 'AI 已连接 · 可随时中断' : '本地知识模式'}
               </p>
             </div>
           </div>
@@ -665,12 +598,11 @@ function MessageRow({ message }: { message: ChatMessage }) {
       <img src="/brand/icon-128.png" alt="" className="mt-0.5 h-8 w-8 shrink-0 object-contain" />
       <div className="min-w-0 flex-1">
         {message.risk && <RiskCard level={message.risk} />}
-        {message.trace && message.trace.length > 0 && <TraceView trace={message.trace} citations={message.citations ?? []} />}
+        {message.trace && message.trace.length > 0 && <TraceView trace={message.trace} />}
         <div className="rounded-3xl rounded-tl-lg border border-white/70 bg-white/70 px-4 py-3 shadow-[0_10px_28px_-24px_rgba(46,96,112,0.6)]">
           <div className="md-body">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
           </div>
-          {message.citations && message.citations.length > 0 && <CitationList items={message.citations} />}
         </div>
         <div className="mt-1.5 flex items-center gap-2 px-1 text-[10px] text-ink-300">
           <span>
@@ -690,7 +622,7 @@ function LiveRow({ live, onStop }: { live: LiveState; onStop: () => void }) {
       <img src="/brand/icon-128.png" alt="" className="mt-0.5 h-8 w-8 shrink-0 object-contain" />
       <div className="min-w-0 flex-1">
         {live.risk && <RiskCard level={live.risk} />}
-        {live.trace.length > 0 && <TraceView trace={live.trace} citations={live.citations} />}
+        {live.trace.length > 0 && <TraceView trace={live.trace} />}
         <div className="rounded-3xl rounded-tl-lg border border-white/70 bg-white/70 px-4 py-3 shadow-[0_10px_28px_-24px_rgba(46,96,112,0.6)]">
           {thinking ? (
             <div className="flex items-center gap-2 py-0.5 text-[12.5px] text-ink-400">

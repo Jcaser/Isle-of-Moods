@@ -56,7 +56,7 @@ const ARK_KEY = env('ARK_API_KEY')
 const ARK_BASE = env('ARK_BASE_URL', 'https://ark.cn-beijing.volces.com/api/v3').replace(/\/+$/, '')
 const ARK_MODEL = env('ARK_MODEL', 'doubao-seed-2-1-turbo-260628')
 const TOKEN_BUDGET = Number(env('ARK_TOKEN_BUDGET', '300000')) || 300000
-const MAX_OUTPUT_TOKENS = Number(env('ARK_MAX_OUTPUT_TOKENS', '700')) || 700
+const MAX_OUTPUT_TOKENS = Number(env('ARK_MAX_OUTPUT_TOKENS', '480')) || 480
 const PORT = Number(env('PROXY_PORT', '8787')) || 8787
 const RATE_LIMIT = Number(env('ARK_RATE_LIMIT', '20')) || 20 // 每分钟最大请求数
 const LOCK_MODEL = env('ARK_LOCK_MODEL', '1') !== '0'
@@ -73,9 +73,10 @@ const initialUsage = (() => {
       calls: Number(j.calls) || 0,
       lastAt: j.lastAt ?? null,
       exhaustedAt: j.exhaustedAt ?? null,
+      recent: Array.isArray(j.recent) ? j.recent.slice(-30) : [],
     }
   } catch {
-    return { used: 0, prompt: 0, completion: 0, calls: 0, lastAt: null, exhaustedAt: null }
+    return { used: 0, prompt: 0, completion: 0, calls: 0, lastAt: null, exhaustedAt: null, recent: [] }
   }
 })()
 
@@ -105,6 +106,8 @@ function addUsage(u) {
   usage.calls += 1
   usage.lastAt = new Date().toISOString()
   if (usage.used >= TOKEN_BUDGET && !usage.exhaustedAt) usage.exhaustedAt = usage.lastAt
+  usage.recent.push({ ts: usage.lastAt, prompt, completion, total })
+  if (usage.recent.length > 30) usage.recent = usage.recent.slice(-30)
   persistUsage()
 }
 
@@ -116,6 +119,9 @@ const quotaSnapshot = () => ({
   exhausted: usage.used >= TOKEN_BUDGET,
   calls: usage.calls,
   lastAt: usage.lastAt,
+  /** 平均每次上游请求消耗，用来判断「一条消息到底花了多少」 */
+  avgPerCall: usage.calls ? Math.round(usage.used / usage.calls) : 0,
+  recent: usage.recent.slice(-12),
 })
 
 /* ────────────────────────── 限流 ────────────────────────── */
@@ -329,7 +335,9 @@ async function handleChat(req, res, ip) {
             counted = true
             addUsage(j.usage)
             console.log(
-              `[ark] +${j.usage.total_tokens ?? 0} tokens（累计 ${usage.used}/${TOKEN_BUDGET}${usage.used >= TOKEN_BUDGET ? '，额度已用完' : ''}）`,
+              `[ark] +${j.usage.total_tokens ?? 0} tokens（prompt ${j.usage.prompt_tokens ?? 0} / completion ${
+                j.usage.completion_tokens ?? 0
+              }｜累计 ${usage.used}/${TOKEN_BUDGET}${usage.used >= TOKEN_BUDGET ? '，额度已用完' : ''}）`,
             )
           }
         } catch {
@@ -371,7 +379,9 @@ const server = http.createServer(async (req, res) => {
       quota: quotaSnapshot(),
       limits: {
         maxOutputTokens: MAX_OUTPUT_TOKENS,
-        maxHistoryTurns: 4,
+        maxHistoryTurns: 3,
+        maxToolSteps: 2,
+        knowledgeSnippets: 2,
         thinking: 'disabled',
         ratePerMinute: RATE_LIMIT,
       },

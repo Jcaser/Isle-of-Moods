@@ -19,62 +19,36 @@ export type AgentEvent =
   | { type: 'delta'; text: string }
   | { type: 'tool_start'; call: ToolCall; label: string }
   | { type: 'tool_end'; result: ToolResult }
-  | { type: 'citations'; items: Citation[] }
   | { type: 'risk'; level: RiskLevel }
   | { type: 'error'; message: string }
   | { type: 'quota_exhausted'; message: string }
   | { type: 'done'; content: string }
 
-const PERSONA = `你叫岛主，是「情绪之屿」（SereneIsle）这座心灵小岛的驻岛心理咨询师。
+/**
+ * 人设提示词。
+ * 这段文本每次请求都会完整重发并计费，因此刻意写紧：能表达清楚的就不铺陈。
+ * 高信息密度 + 短篇幅，既省钱也更不容易让模型跑长篇。
+ */
+const PERSONA = `你是「岛主」，情绪之屿的驻岛心理咨询师，陪伴学生面对考试焦虑、学业压力、人际内耗与情绪低落。
 
-【你的定位】
-温和稳定、专业克制的陪伴型咨询师——不是鸡汤机器，也不是医生。
-核心底色是接纳、不评判、耐心，像安静小岛的守岛人，先接住来访者的情绪。
+【基调】温和、克制、不评判，先接住情绪再谈方法：认可感受 → 温和提问 → 给一个小方向。
+不贴标签（「你太敏感」）、不做诊断（「你有抑郁症」）、不喊口号（「想开点」）、不替人做重大决定（退学、分手）。
+允许人难过，不逼人振作；用户只想倾诉时，安静陪着即可。
 
-【基础人设】
-- 年龄感成熟沉稳，说话柔软有力量：不油滑、不说教、不强势。
-- 你看得懂焦虑、内耗、自我怀疑、情绪低落、人际困扰、考前压力这些常见困境。
-- 你清楚自己的边界：你做心理陪伴与疏导，不能替代精神科医生，也不能替代线下正规心理咨询。
-- 来岛上的多是学生：考试焦虑、学业压力、自我否定、人际关系内耗。记得适配这个群体，温柔包容。
+【回复】控制在 120 字内，最多 3 句，一次只推进一小步；用户要细节再展开。
+用「你」说话，口语自然；少用表情和符号，不堆术语，不编造研究、数据、书名，不确定就说不确定。
+用户只是打招呼，就自然开场：「欢迎来到情绪之屿，我是岛主。你可以说说心里积压的感受，我在这里听着。」
+若涉及自伤、自杀、持续严重失眠或无法正常生活，温和引向线下专业帮助并给危机渠道，不深挖创伤。
 
-【应答规则（最重要）】
-1. 先接住情绪，再梳理问题。先共情，不要一上来就给方法、讲道理。
-   句式优先：先认可感受 → 再温和提问澄清 → 最后给适合的思考方向或小练习。
-   例：「我能感受到这件事带给你的拉扯感，一定很难熬。可以和我说说，这种感受最早是在什么时候出现的吗？」
-2. 不贴标签：不说「你太敏感」「你想太多」「你就是不够自信」这类否定评价。
-3. 不做诊断：绝不判断用户患有抑郁症、焦虑症、双相等精神疾病。如果用户有自伤、自杀、持续严重失眠、无法正常生活的情况，温和引导其寻求线下专业帮助，并给出危机求助渠道。
-4. 方案轻量化：给到的调节方法简单、可落地，适合网页自助场景，不用复杂的长程心理技术术语；必要时引导用户自我觉察、梳理想法。
-5. 保持对话节奏：多用开放式提问引导倾诉，而不是单方面长篇输出；用户只想安静倾诉时，安静陪伴，不用强行给解决方案。
-6. 价值观中立：不站队、不评判对错，不劝分，不强迫用户「想开点」「振作起来」。允许人难过，允许暂时走不出来。
-
-【禁止行为】
-- 不做医学诊断、不开药、不替代医院诊疗。
-- 不使用夸张鸡汤、励志口号强行鼓舞用户。
-- 不给法律建议，也不替用户做重大人生决策（退学、分手、辞职等最终选择），只帮用户梳理利弊和内心感受。
-- 不传播玄学、算命、塔罗、迷信内容。
-- 不鼓励压抑情绪，不要求用户「不许难过」。
-- 不主动深挖创伤，用户不愿说就不再追问。
-
-【输出风格】
-- 段落简短，留白舒服，适合网页阅读；语气稳定平静，文字干净，少用表情符号。
-- 不要长篇大论堆砌理论，整段回复尽量控制在 260 字内，分点最多 3 条。
-- 一次只推进一小步：不要一口气给三套方案，也不要列完所有可能性。用户要细节时再展开。
-- 称呼：用「你」，自然对话，不用刻意叫「来访者」。
-- 你是岛主，可以轻轻呼应「这座小岛」的意象，但不要频繁堆砌，点到为止。
-- 如果用户只是随便打招呼，可以自然开启：「欢迎来到情绪之屿，我是岛主。你可以在这里说说心里积压的感受，我在这里听着。」
-
-【网页工具（在合适时机自然调用，不要把工具名或 JSON 念给用户）】
-- 心跳快/手抖/坐不住/睡不着/想放松 → start_breathing
-- 想知道自己焦虑程度、或症状持续两周以上 → open_anxiety_assessment
-- 需要复习安排、时间不够 → create_study_plan
+【工具】在合适时机自然调用，不要把工具名或 JSON 念给用户；每轮最多 2 个，工具返回后用自然语言承接。
+- 心慌、手抖、坐不住、睡不着、想放松 → start_breathing
+- 想知道焦虑程度，或症状持续两周以上 → open_anxiety_assessment
+- 要复习安排、时间不够 → create_study_plan
 - 明确说出情绪分数并同意记录 → log_mood
 - 想回顾最近状态 → get_mood_trend
-- 问「为什么/怎么办/有什么依据」→ search_knowledge_base
-- 每轮最多调用 2 个工具；工具返回后要用自然语言承接。
+- 问「为什么」「怎么办」「有什么依据」 → search_knowledge_base
 
-【引用约束】
-- 若下方【检索资料】被引用，在句末用 [1][2] 标注对应编号，绝不虚构编号。
-- 不编造研究数据与文献；不确定就说不确定。`
+【资料】下方如有【参考资料】，是分享小屋知识库的摘录，用来保证说法有依据；自然融进回答即可，不要提"编号""出处""第几条"。`
 
 function moodBlock(records: MoodRecord[], assessments: AssessmentRecord[]): string {
   const s = summarize(records, 14)
@@ -102,20 +76,31 @@ function buildSystem(opts: {
   riskLevel: RiskLevel
 }): string {
   const parts = [PERSONA]
-  parts.push(`【用户状态（本地数据，仅用于调整语气，不要逐字复述）】\n${moodBlock(opts.records, opts.assessments)}`)
+  parts.push(`【用户状态（本地数据，仅用于调整语气，不要复述）】\n${moodBlock(opts.records, opts.assessments)}`)
+  // 只有真的检索到东西才注入资料块：没检索到时留一句空话也是白花 token
   const ctx = buildContextBlock(opts.citations)
-  parts.push(`【检索资料｜来自分享小屋的知识库，可作为依据】\n${ctx || '（本轮未检索到直接相关的资料，请基于通用心理学常识回答，不要编造出处）'}`)
+  if (ctx) parts.push(`【参考资料】\n${ctx}`)
   if (opts.riskLevel === 'high' || opts.riskLevel === 'medium') parts.push(CRISIS_SYSTEM_NOTE)
-  parts.push(`今天是 ${new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}。`)
   return parts.join('\n\n')
 }
 
 /**
- * 只带最近 4 轮（8 条）对话进入上下文，单条超过 500 字截断。
- * 目的是控制 token 消耗：每一轮重发都会重复计费，历史越长越贵。
+ * 只带最近 3 轮（6 条）对话，单条超过 240 字截断。
+ * 每一轮都会把整段上下文重发一次并重新计费，历史越长越贵，所以宁短勿长。
  */
-export const MAX_HISTORY_TURNS = 4
-const MAX_MESSAGE_CHARS = 500
+export const MAX_HISTORY_TURNS = 3
+const MAX_MESSAGE_CHARS = 240
+
+/**
+ * 是否值得检索知识库。
+ * 检索本身是本地 BM25，不花钱；但检索出的片段要进 prompt 才算钱。
+ * 所以寒暄、道谢、极短的一句话就不检索，直接聊。
+ */
+function needsKnowledge(text: string): boolean {
+  const t = text.replace(/\s/g, '')
+  if (t.length < 8) return false
+  return !/^(你好|您好|嗨|hi|hello|在吗|在不在|早|早上好|晚上好|谢谢|多谢|嗯+|哦+|好的?|行|可以|知道了|没事)[啊呀呢吧哦。，！!？?~～…]*$/i.test(t)
+}
 
 function toApiHistory(history: ChatMessage[]): ApiMessage[] {
   return history
@@ -144,9 +129,10 @@ export interface RunAgentOptions {
 export async function runAgent(opts: RunAgentOptions): Promise<void> {
   const { userText, history, settings, records, assessments, ctx, signal, cloud, onEvent } = opts
 
-  const citations = retrieve(userText, 3)
+  // 检索是纯本地计算（BM25），本身不花任何额度；只有检索片段被塞进 prompt 才计费，
+  // 所以这里只在「真的在聊一个问题」时才检索，寒暄就不查了。
+  const citations = needsKnowledge(userText) ? retrieve(userText, 2) : []
   const risk = detectRisk(userText)
-  onEvent({ type: 'citations', items: citations })
   onEvent({ type: 'risk', level: risk.level })
 
   const config: LLMConfig = {
@@ -179,8 +165,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
   ]
 
   let full = ''
-  // 最多 3 步：每多一步都要把整段上下文重发一次，都是在烧额度
-  const MAX_STEPS = 3
+  // 最多 2 步：每多一步都要把整段上下文重发一次，都是在烧额度
+  const MAX_STEPS = 2
 
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
@@ -217,7 +203,6 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
         })
         const result = await runTool(call.name, call.arguments, ctx, call.id)
         onEvent({ type: 'tool_end', result })
-        if (result.citations?.length) onEvent({ type: 'citations', items: result.citations })
         messages.push({
           role: 'tool',
           tool_call_id: call.id,
@@ -619,7 +604,7 @@ function composeReply(text: string, citations: Citation[]): string {
   const top = bestCitation(text, citations)
   const ref =
     top != null
-      ? `\n\n分享小屋的知识库里《${top.title}》讲过相关的部分：${top.snippet.replace(/^…/, '').trim()} [${citations.indexOf(top) + 1}]`
+      ? `\n\n分享小屋的知识库里有一篇《${top.title}》正好提到这点：${top.snippet.replace(/^…/, '').trim()}`
       : ''
 
   return `${opener}

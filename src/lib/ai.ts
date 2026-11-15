@@ -13,6 +13,8 @@ export interface Quota {
   exhausted: boolean
   calls: number
   lastAt: string | null
+  /** 平均每次上游请求消耗的 tokens：用来判断「发一条消息大概花多少」 */
+  avgPerCall?: number
 }
 
 export interface AiStatus {

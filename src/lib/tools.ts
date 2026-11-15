@@ -38,12 +38,12 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     function: {
       name: 'search_knowledge_base',
       description:
-        '在分享小屋的知识库（CBT、教育心理学、睡眠、学习科学的私有知识库）中检索。当用户询问"为什么""怎么办""有什么科学依据"或需要具体方法步骤时调用，返回带出处的资料片段。',
+        '检索分享小屋知识库（CBT、睡眠、学习科学）。用户问"为什么""怎么办""有依据吗"时调用。',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: '检索关键词或用户原话，保留具体症状与情境' },
-          top_k: { type: 'integer', description: '返回片段数量，1-5，默认 3' },
+          query: { type: 'string', description: '检索词，保留具体症状与情境' },
+          top_k: { type: 'integer', description: '片段数，1-3，默认 2' },
         },
         required: ['query'],
       },
@@ -53,8 +53,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     type: 'function',
     function: {
       name: 'start_breathing',
-      description:
-        '打开潮汐呼吸放松引导面板（4-7-8 / 箱式 / 共振呼吸）。当用户报告心跳快、手抖、坐不住、脑子发紧、睡不着，或明确想放松时调用。',
+      description: '打开呼吸放松引导面板。用户心慌、手抖、坐不住、睡不着或想放松时调用。',
       parameters: {
         type: 'object',
         properties: {
@@ -73,8 +72,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     type: 'function',
     function: {
       name: 'open_anxiety_assessment',
-      description:
-        '打开 GAD-7 焦虑自评量表（7 题，过去两周）。当用户想知道"我是不是焦虑过度""我的程度如何"，或描述持续两周以上的紧张、担忧、睡不好时调用。',
+      description: '打开 GAD-7 焦虑自评（7 题，近两周）。用户想知道焦虑程度，或紧张持续两周以上时调用。',
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
@@ -82,8 +80,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     type: 'function',
     function: {
       name: 'create_study_plan',
-      description:
-        '根据剩余天数、每日可用时长与科目生成"减压复习计划"：分阶段、含固定错题回顾与放松时段，避免过载。',
+      description: '按剩余天数、每天可用时长与科目生成减压复习计划，含错题回顾与放松时段。',
       parameters: {
         type: 'object',
         properties: {
@@ -100,8 +97,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     type: 'function',
     function: {
       name: 'log_mood',
-      description:
-        '记录一次情绪状态到本地情绪潮向仪表盘。必须先与用户确认分数（1=很低落 5=很舒展）再调用。',
+      description: '记录一次情绪分数（1 很低落 - 5 很舒展）。必须先和用户确认分数再调用。',
       parameters: {
         type: 'object',
         properties: {
@@ -121,7 +117,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     type: 'function',
     function: {
       name: 'get_mood_trend',
-      description: '读取本地情绪记录，返回近 N 天的平均分、波动趋势、高频困扰标签与记录天数。',
+      description: '读取本地情绪记录，返回近 N 天平均分、趋势与高频标签。',
       parameters: {
         type: 'object',
         properties: {
@@ -218,12 +214,14 @@ export async function runTool(
     switch (name) {
       case 'search_knowledge_base': {
         const query = String(args.query ?? '')
-        const k = clamp(Number(args.top_k ?? 3), 1, 5)
+        const k = clamp(Number(args.top_k ?? 2), 1, 3)
         const citations: Citation[] = retrieve(query, k)
         if (!citations.length) return ok('知识库未检索到直接相关的条目')
+        // 只回传最相关的 2 条：这段文字会作为工具结果再次进入上下文，也是在计费
         const text = citations
-          .map((c, i) => `【资料${i + 1}】${c.title}（${c.category}）\n${c.snippet}`)
-          .join('\n\n')
+          .slice(0, 2)
+          .map((c, i) => `资料${i + 1}《${c.title}》：${c.snippet}`)
+          .join('\n')
         return ok(text, { citations })
       }
 

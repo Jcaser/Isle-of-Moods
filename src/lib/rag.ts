@@ -283,15 +283,18 @@ export function searchDocs(keyword: string, category: string): KnowledgeDoc[] {
   })
 }
 
-/** 组装注入大模型的检索上下文 */
+/**
+ * 组装注入大模型的检索上下文。
+ *
+ * 注意：检索本身是本地 BM25 计算，零成本；真正花钱的是这段文字被塞进 prompt。
+ * 所以这里只取最相关的 2 条、去掉分类与编号等对模型无用的装饰，尽量短。
+ */
 export function buildContextBlock(citations: Citation[]): string {
   if (!citations.length) return ''
   return citations
-    .map(
-      (c, i) =>
-        `【资料 ${i + 1}｜${c.title}｜${c.category}】\n${c.snippet}\n（引用编号：${c.chunkId}）`,
-    )
-    .join('\n\n')
+    .slice(0, 2)
+    .map((c, i) => `资料${i + 1}《${c.title}》：${c.snippet}`)
+    .join('\n')
 }
 
 export function docById(id: string): KnowledgeDoc | undefined {

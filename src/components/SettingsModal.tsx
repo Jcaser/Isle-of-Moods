@@ -127,6 +127,9 @@ export function SettingsModal() {
                     <span>
                       用量 {formatTokens(aiStatus.quota.used)} / {formatTokens(aiStatus.quota.budget)} tokens
                       {aiStatus.quota.calls > 0 ? ` · ${aiStatus.quota.calls} 次调用` : ''}
+                      {aiStatus.quota.avgPerCall
+                        ? ` · 平均每次 ${formatTokens(aiStatus.quota.avgPerCall)}`
+                        : ''}
                     </span>
                     <span className={aiStatus.quota.exhausted ? 'font-semibold text-coral-500' : ''}>
                       {aiStatus.quota.exhausted ? '已达上限，已停止' : `剩 ${formatTokens(aiStatus.quota.remaining)}`}
@@ -134,7 +137,8 @@ export function SettingsModal() {
                   </div>
                   <p className="mt-2 text-[10px] leading-relaxed text-ink-300">
                     单次最多输出 {aiStatus.limits.maxOutputTokens} tokens，只带最近 {aiStatus.limits.maxHistoryTurns} 轮对话；
-                    深度思考已关闭，避免思考 token 成倍计费。触及上限后会自动停下，不会再产生费用。
+                    深度思考已关闭，避免思考 token 成倍计费。一条消息若调用工具会拆成 2 次请求，两次都要重发上下文，
+                    所以「平均每次」乘以 2 才约等于一条消息的成本。触及上限后会自动停下，不会再产生费用。
                   </p>
                 </>
               )}
