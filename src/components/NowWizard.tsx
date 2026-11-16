@@ -17,7 +17,8 @@ const KEY = 'sereneisle.v1.harbor-checklist'
 
 interface Stored {
   date: string
-  done: string[]
+  /** 按「最难受的部分 + 是否有人」分别记进度，换答案时不会串 */
+  done: Record<string, string[]>
 }
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -35,21 +36,31 @@ export function NowWizard() {
   const result = useMemo(() => wizardResult(knot, company), [knot, company])
   const step = !knot ? 1 : !company ? 2 : 3
 
-  useEffect(() => {
+  const combo = knot && company ? `${knot}-${company}` : ''
+
+  const readAll = (): Record<string, string[]> => {
     try {
       const raw = localStorage.getItem(KEY)
-      if (!raw) return
+      if (!raw) return {}
       const parsed = JSON.parse(raw) as Stored
-      if (parsed.date === today()) setDone(parsed.done ?? [])
+      return parsed.date === today() ? (parsed.done ?? {}) : {}
     } catch {
-      /* 忽略 */
+      return {}
     }
-  }, [])
+  }
+
+  useEffect(() => {
+    if (!combo) return
+    // 换组合时重新取一次进度（readAll 直接读当前存储）
+    setDone(readAll()[combo] ?? [])
+  }, [combo])
 
   const persist = (next: string[]) => {
     setDone(next)
     try {
-      localStorage.setItem(KEY, JSON.stringify({ date: today(), done: next }))
+      const all = readAll()
+      all[combo] = next
+      localStorage.setItem(KEY, JSON.stringify({ date: today(), done: all }))
     } catch {
       /* 忽略 */
     }
