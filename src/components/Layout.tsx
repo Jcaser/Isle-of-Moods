@@ -332,6 +332,13 @@ function PageShell({ children }: { children: React.ReactNode }) {
     el.style.animation = 'none'
     void el.offsetWidth
     el.style.animation = 'pageIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both'
+    /* 动画跑完就把 style 清掉：fill both 会让 transform / filter 一直留在元素上，
+       那样页面里所有 position:fixed 的浮层都会相对整页内容定位，而不是屏幕 */
+    const done = () => {
+      el.style.animation = 'none'
+    }
+    el.addEventListener('animationend', done, { once: true })
+    return () => el.removeEventListener('animationend', done)
   }, [pathname])
 
   return (

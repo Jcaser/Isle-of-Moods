@@ -16,7 +16,7 @@ const CATEGORY_TONE: Record<string, string> = {
   危机识别: 'bg-coral-300/25 text-[#c2634f]',
 }
 
-/** 岛主的知识库：分享小屋里的一栏检索界面 */
+/** 岛主的藏书阁：分享小屋里的一栏检索界面 */
 export function KnowledgePane({ focusDocId }: { focusDocId?: string | null }) {
   const [keyword, setKeyword] = useState('')
   const [category, setCategory] = useState<string>('全部')
@@ -34,28 +34,14 @@ export function KnowledgePane({ focusDocId }: { focusDocId?: string | null }) {
   return (
     <div>
       <section className="mb-5 rounded-5xl border border-white/70 bg-gradient-to-b from-white/55 to-white/25 px-3 py-4 backdrop-blur-sm sm:px-5">
-        <div className="mb-1 flex items-center justify-between px-1">
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2 px-1">
           <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-sea-500">The Shelf</p>
-          <p className="text-[10.5px] text-ink-300">点书脊，直接翻开</p>
+          <p className="text-[10.5px] text-ink-300">
+            {KB_STATS.docs} 篇条目 · {KB_STATS.chunks} 个检索片段
+          </p>
         </div>
         <BookShelf docs={KNOWLEDGE_DOCS} onOpen={(d) => setActive(d)} />
       </section>
-
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
-        <p className="max-w-2xl text-[12.5px] leading-relaxed text-ink-500">
-          岛主的私人知识库：教育心理学、CBT、睡眠与学习科学，其中一部方法条目改写自《认知行为疗法：基础与应用》《理智胜过情感》《伯恩斯新情绪疗法》，篇末可查看依据。岛主回答时会先在这里检索，把要点融进自己的话里，不再单独展示出处。
-        </p>
-        <div className="flex gap-2">
-          <div className="rounded-2xl border border-white/70 bg-white/55 px-3.5 py-1.5 text-center">
-            <p className="font-display text-base font-semibold leading-none text-ink-900">{KB_STATS.docs}</p>
-            <p className="mt-0.5 text-[9.5px] text-ink-400">篇条目</p>
-          </div>
-          <div className="rounded-2xl border border-white/70 bg-white/55 px-3.5 py-1.5 text-center">
-            <p className="font-display text-base font-semibold leading-none text-ink-900">{KB_STATS.chunks}</p>
-            <p className="mt-0.5 text-[9.5px] text-ink-400">个检索片段</p>
-          </div>
-        </div>
-      </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
@@ -65,7 +51,7 @@ export function KnowledgePane({ focusDocId }: { focusDocId?: string | null }) {
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="搜索：失眠 / 灾难化 / 拖延 / 呼吸…"
             className="input py-3 pl-11"
-            aria-label="搜索知识库"
+            aria-label="搜索藏书阁"
           />
         </div>
         <div className="flex flex-wrap gap-1.5">

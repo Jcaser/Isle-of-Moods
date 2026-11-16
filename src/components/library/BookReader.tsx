@@ -224,7 +224,7 @@ export function BookReader({ book, myName, onClose, onReply, onToast }: ReaderPr
               animate={{ y: 0, opacity: 1, scale: 1, rotateX: 0 }}
               exit={{ y: 30, opacity: 0, scale: 0.98 }}
               transition={{ type: 'spring', stiffness: 220, damping: 24 }}
-              className="relative z-10 flex max-h-[93vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-[28px] border border-white/70 shadow-[0_50px_90px_-44px_rgba(30,60,72,0.6)] sm:rounded-[28px]"
+              className="relative z-10 flex max-h-[93dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-[28px] border border-white/70 shadow-[0_50px_90px_-44px_rgba(30,60,72,0.6)] sm:rounded-[28px]"
               style={{ background: 'linear-gradient(180deg, #fffdf8 0%, #fdf8ee 100%)' }}
             >
               {/* 顶部微微的书脊光 */}

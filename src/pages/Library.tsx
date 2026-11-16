@@ -35,7 +35,7 @@ type Tab = 'wall' | 'mine' | 'knowledge'
 const TABS: { key: Tab; label: string; hint: string }[] = [
   { key: 'wall', label: '书墙', hint: '大家的书' },
   { key: 'mine', label: '我的书架', hint: '我写的与收到的' },
-  { key: 'knowledge', label: '知识库', hint: '岛主读过的' },
+  { key: 'knowledge', label: '藏书阁', hint: '岛主读过的' },
 ]
 
 const SORTS: { key: SortKey; label: string }[] = [
@@ -220,7 +220,7 @@ export default function Library() {
         </div>
 
         <p className="text-[10.5px] tracking-[0.12em] text-ink-300">
-          {tab === 'wall' ? '点一本书翻开 · 读完可以留一张便签' : tab === 'mine' ? '只属于你的一格书架' : '岛主回答的出处'}
+          {tab === 'wall' ? '点一本书翻开 · 读完可以留一张便签' : tab === 'mine' ? '只属于你的一格书架' : '岛主读过的书 · 点书脊翻开'}
         </p>
       </div>
 
