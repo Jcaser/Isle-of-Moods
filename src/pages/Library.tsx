@@ -282,7 +282,7 @@ export default function Library() {
               </div>
 
               {filtered.length > 0 ? (
-                <div className="mt-3 rounded-[2rem] border border-white/60 bg-gradient-to-b from-white/40 to-white/12 px-2 py-2 sm:px-4">
+                <div className="mt-3 rounded-[2rem] border border-white/60 bg-gradient-to-b from-white/40 to-white/[0.12] px-2 py-2 sm:px-4">
                   <BookWall books={filtered} onOpen={(b) => setReaderId(b.id)} onCreate={() => openStudio('create')} />
                 </div>
               ) : (
@@ -484,7 +484,7 @@ export default function Library() {
               role="status"
               aria-live="polite"
             >
-              <div className="flex items-center gap-2.5 rounded-full border border-white/80 bg-white/92 px-4 py-2.5 shadow-[0_24px_50px_-28px_rgba(46,96,112,0.7)] backdrop-blur-xl">
+              <div className="flex items-center gap-2.5 rounded-full border border-white/80 bg-white/[0.92] px-4 py-2.5 shadow-[0_24px_50px_-28px_rgba(46,96,112,0.7)] backdrop-blur-xl">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sea-100 to-lav-100 text-sea-600">
                   <Icon name="heart" size={12} />
                 </span>

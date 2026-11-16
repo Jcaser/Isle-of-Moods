@@ -63,7 +63,7 @@ function BookTile({ book, index, onOpen }: TileProps) {
       aria-label={`翻开《${book.title}》，作者 ${book.author}`}
     >
       {/* 书影 */}
-      <span className="pointer-events-none absolute -bottom-1 left-1/2 h-2 w-[78%] -translate-x-1/2 rounded-[50%] bg-ink-900/12 blur-[5px] transition-all duration-400 group-hover:w-[62%] group-hover:bg-ink-900/18" />
+      <span className="pointer-events-none absolute -bottom-1 left-1/2 h-2 w-[78%] -translate-x-1/2 rounded-[50%] bg-ink-900/[0.12] blur-[5px] transition-all duration-400 group-hover:w-[62%] group-hover:bg-ink-900/[0.18]" />
 
       <div className="relative overflow-hidden rounded-[7px] shadow-[0_10px_18px_-14px_rgba(46,96,112,0.6)] transition-shadow duration-400 group-hover:shadow-[0_26px_40px_-22px_rgba(46,96,112,0.62)]">
         <BookCover cover={book.cover} title={book.title} author={book.author} mood={book.mood} size="sm" />

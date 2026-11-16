@@ -111,7 +111,7 @@ export function SettingsModal() {
 
               {aiStatus && (
                 <>
-                  <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-ink-900/8">
+                  <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-ink-900/[0.08]">
                     <div
                       className={`h-full rounded-full transition-all ${
                         aiStatus.quota.exhausted

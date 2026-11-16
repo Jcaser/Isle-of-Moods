@@ -72,7 +72,7 @@ export function Modal({ open, onClose, title, subtitle, children, maxWidth = 'ma
       aria-label={title ?? '对话框'}
     >
       <button
-        className="absolute inset-0 h-full w-full cursor-default bg-[#2b4450]/25 backdrop-blur-[6px]"
+        className="absolute inset-0 h-full w-full cursor-default bg-[#2b4450]/[0.25] backdrop-blur-[6px]"
         onClick={onClose}
         aria-label="关闭对话框"
         tabIndex={-1}

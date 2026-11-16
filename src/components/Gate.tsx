@@ -613,7 +613,7 @@ export function Gate() {
           transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
           className="relative my-auto w-full"
         >
-          <div className="relative flex min-h-[27rem] flex-col overflow-hidden rounded-[2rem] border border-white/85 bg-white/72 p-6 shadow-[0_40px_100px_-50px_rgba(46,96,112,0.55)] backdrop-blur-xl sm:p-8">
+          <div className="relative flex min-h-[27rem] flex-col overflow-hidden rounded-[2rem] border border-white/85 bg-white/[0.72] p-6 shadow-[0_40px_100px_-50px_rgba(46,96,112,0.55)] backdrop-blur-xl sm:p-8">
             <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-lav-200/45 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-20 -left-12 h-48 w-48 rounded-full bg-sea-200/40 blur-3xl" />
 
@@ -736,9 +736,9 @@ export function Gate() {
                     </form>
 
                     <div className="mt-3 flex items-center gap-3">
-                      <span className="h-px flex-1 bg-ink-900/8" />
+                      <span className="h-px flex-1 bg-ink-900/[0.08]" />
                       <span className="text-[10px] tracking-[0.2em] text-ink-300">OR</span>
-                      <span className="h-px flex-1 bg-ink-900/8" />
+                      <span className="h-px flex-1 bg-ink-900/[0.08]" />
                     </div>
 
                     <button

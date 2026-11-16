@@ -154,7 +154,7 @@ export function CommandPalette() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.16 }}
         >
-          <div className="absolute inset-0 bg-[#0f2d36]/12 backdrop-blur-[3px]" onClick={close} aria-hidden="true" />
+          <div className="absolute inset-0 bg-[#0f2d36]/[0.12] backdrop-blur-[3px]" onClick={close} aria-hidden="true" />
           <motion.div
             initial={{ opacity: 0, y: -10, scale: 0.985 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -163,9 +163,9 @@ export function CommandPalette() {
             role="dialog"
             aria-modal="true"
             aria-label="快捷命令"
-            className="relative w-full max-w-lg overflow-hidden rounded-4xl border border-white/90 bg-white/92 shadow-[0_40px_90px_-40px_rgba(24,60,72,0.55)] backdrop-blur-xl"
+            className="relative w-full max-w-lg overflow-hidden rounded-4xl border border-white/90 bg-white/[0.92] shadow-[0_40px_90px_-40px_rgba(24,60,72,0.55)] backdrop-blur-xl"
           >
-            <div className="flex items-center gap-2.5 border-b border-ink-900/6 px-4 py-3">
+            <div className="flex items-center gap-2.5 border-b border-ink-900/[0.06] px-4 py-3">
               <Icon name="compass" size={16} className="text-sea-500" />
               <input
                 ref={inputRef}
@@ -219,7 +219,7 @@ export function CommandPalette() {
               })}
             </div>
 
-            <div className="flex items-center justify-between border-t border-ink-900/6 px-4 py-2 text-[10px] text-ink-300">
+            <div className="flex items-center justify-between border-t border-ink-900/[0.06] px-4 py-2 text-[10px] text-ink-300">
               <span>↑↓ 选择 · Enter 执行</span>
               <span>⌘K / Ctrl K 随时唤起</span>
             </div>

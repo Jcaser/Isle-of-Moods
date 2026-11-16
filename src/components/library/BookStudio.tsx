@@ -271,7 +271,7 @@ export function BookStudio({ open, mode, editing, author = '我', onClose, onSav
           <div
             className={
               isDesign
-                ? 'sticky top-[84px] z-10 -mx-1 bg-[#fffdf8]/93 px-1 pb-2 pt-1 backdrop-blur-sm lg:static lg:top-2 lg:bg-transparent lg:pb-0 lg:pt-0 lg:backdrop-blur-none'
+                ? 'sticky top-[84px] z-10 -mx-1 bg-[#fffdf8]/[0.93] px-1 pb-2 pt-1 backdrop-blur-sm lg:static lg:top-2 lg:bg-transparent lg:pb-0 lg:pt-0 lg:backdrop-blur-none'
                 : ''
             }
           >

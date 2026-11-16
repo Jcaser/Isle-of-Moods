@@ -3,17 +3,13 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Icon } from '../components/Icons'
 import { IslandAtlas } from '../components/IslandAtlas'
-import { MoodCheckIn } from '../components/MoodCheckIn'
-import { MoodChart } from '../components/MoodChart'
 import { Reveal } from '../components/Reveal'
-import { buildSeries, insightOf, summarize } from '../lib/mood'
+import { RingGallery } from '../components/RingGallery'
 import { MOMENTS, loadMoment, type Moment } from '../lib/moment'
 import { useAppStore } from '../store/useAppStore'
 
 export default function Home() {
-  const records = useAppStore((s) => s.records)
   const openBreathing = useAppStore((s) => s.openBreathing)
-  const setAssessmentOpen = useAppStore((s) => s.setAssessmentOpen)
   const [moment, setMoment] = useState<Moment>('noon')
   const { hash } = useLocation()
 
@@ -30,9 +26,6 @@ export default function Home() {
     return () => window.clearTimeout(t)
   }, [hash])
 
-  const series = buildSeries(records, 7)
-  const summary = summarize(records, 7)
-  const insight = insightOf(summary)
   const momentMeta = MOMENTS.find((m) => m.id === moment) ?? MOMENTS[1]
   const greeting =
     moment === 'dawn' ? '早上好' : moment === 'dusk' ? '傍晚好' : moment === 'night' ? '夜里好' : '你好'
@@ -145,57 +138,21 @@ export default function Home() {
         <IslandAtlas />
       </Reveal>
 
-      {/* ── 今日潮位 + 趋势 ── */}
+      {/* ── 明信片环形画廊 ── */}
       <Reveal delay={60}>
-        <section className="mt-4 grid gap-4 lg:grid-cols-[1.02fr_0.98fr]">
-          <MoodCheckIn />
-          <div className="lux flex flex-col p-5 sm:p-6">
-            <div className="flex items-baseline justify-between">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-sea-500">Tide Trend</p>
-                <p className="mt-1 font-display text-[16px] font-semibold tracking-tight text-ink-900">近 7 天潮向</p>
-              </div>
-              <Link to="/mood" className="text-[11px] text-ink-400 transition hover:text-sea-600">
-                完整仪表盘 →
-              </Link>
+        <section className="mt-6 overflow-hidden rounded-5xl border border-white/60 bg-gradient-to-b from-white/45 via-white/20 to-transparent px-4 pb-5 pt-6 sm:px-8 sm:pb-6 sm:pt-8">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.26em] text-sea-500">Postcards from the isle</p>
+              <h2 className="mt-1.5 font-display text-[22px] font-semibold tracking-tight text-ink-900 sm:text-[26px]">
+                转一转，挑一张带走
+              </h2>
             </div>
-            <div className="mt-3 flex-1">
-              <MoodChart points={series} height={150} compact />
-            </div>
-            <div className="mt-3 flex items-center gap-4 border-t border-white/60 pt-3">
-              <div>
-                <p className="text-[10px] text-ink-300">平均情绪</p>
-                <p className="tnum font-display text-xl font-semibold text-ink-900">
-                  {summary.avg !== null ? summary.avg.toFixed(1) : '—'}
-                  <span className="ml-0.5 text-[11px] font-normal text-ink-300">/5</span>
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] text-ink-300">连续记录</p>
-                <p className="tnum font-display text-xl font-semibold text-ink-900">
-                  {summary.streak}
-                  <span className="ml-0.5 text-[11px] font-normal text-ink-300">天</span>
-                </p>
-              </div>
-              <button onClick={() => setAssessmentOpen(true)} className="btn-quiet ml-auto text-[11.5px]">
-                GAD-7 自评
-                <Icon name="arrowRight" size={13} />
-              </button>
-            </div>
+            <p className="text-[11px] text-ink-300">七张小画 · 挑一句今天需要的</p>
           </div>
-        </section>
-      </Reveal>
-
-      {/* ── 洞察 ── */}
-      <Reveal delay={40}>
-        <section className="mt-4 flex items-start gap-3 rounded-4xl border border-white/70 bg-white/45 px-5 py-4 backdrop-blur">
-          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-lav-100/80 text-lav-500">
-            <Icon name="compass" size={15} />
-          </span>
-          <p className="text-[12.5px] leading-relaxed text-ink-600">
-            <strong className="font-semibold text-ink-900">今日潮向　</strong>
-            {insight}
-          </p>
+          <div className="mt-3">
+            <RingGallery />
+          </div>
         </section>
       </Reveal>
 

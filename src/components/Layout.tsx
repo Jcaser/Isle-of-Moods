@@ -93,7 +93,7 @@ function UserMenu() {
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.18 }}
             role="menu"
-            className="absolute right-0 top-[calc(100%+8px)] w-52 overflow-hidden rounded-3xl border border-white/85 bg-white/92 p-1.5 shadow-[0_30px_60px_-36px_rgba(46,96,112,0.6)] backdrop-blur-xl"
+            className="absolute right-0 top-[calc(100%+8px)] w-52 overflow-hidden rounded-3xl border border-white/85 bg-white/[0.92] p-1.5 shadow-[0_30px_60px_-36px_rgba(46,96,112,0.6)] backdrop-blur-xl"
           >
             <div className="px-3 py-2">
               <p className="truncate font-display text-[13px] font-semibold text-ink-900">{user.name}</p>
@@ -101,7 +101,7 @@ function UserMenu() {
                 {user.guest ? '过客身份 · 数据公用' : `${joined} 登岛`}
               </p>
             </div>
-            <div className="my-1 h-px bg-ink-900/6" />
+            <div className="my-1 h-px bg-ink-900/[0.06]" />
             <NavLink
               to="/mood"
               onClick={() => setOpen(false)}
@@ -122,7 +122,7 @@ function UserMenu() {
               <Icon name="settings" size={14} />
               岛屿设置
             </button>
-            <div className="my-1 h-px bg-ink-900/6" />
+            <div className="my-1 h-px bg-ink-900/[0.06]" />
             <button
               onClick={() => {
                 setOpen(false)

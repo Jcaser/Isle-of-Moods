@@ -316,7 +316,7 @@ function PostcardTab() {
 
         {/* 题字叠在画面底部，和明信片上手写一行字一样 */}
         {quote && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/45 via-black/18 to-transparent px-6 pb-5 pt-16 text-center">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/45 via-black/[0.18] to-transparent px-6 pb-5 pt-16 text-center">
             <p className="font-display text-[13.5px] font-medium tracking-wide text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)] sm:text-[15px]">
               {quote}
             </p>

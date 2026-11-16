@@ -86,7 +86,7 @@ function ReplyComposer({ book, myName, open, onClose, onSubmit }: ReplyComposerP
           exit={{ opacity: 0 }}
         >
           <button
-            className="absolute inset-0 cursor-default bg-[#2b4450]/28 backdrop-blur-[5px]"
+            className="absolute inset-0 cursor-default bg-[#2b4450]/[0.28] backdrop-blur-[5px]"
             onClick={onClose}
             aria-label="关闭回复"
             tabIndex={-1}
@@ -213,7 +213,7 @@ export function BookReader({ book, myName, onClose, onReply, onToast }: ReaderPr
             aria-label={`《${book.title}》`}
           >
             <button
-              className="absolute inset-0 cursor-default bg-[#243844]/32 backdrop-blur-[7px]"
+              className="absolute inset-0 cursor-default bg-[#243844]/[0.32] backdrop-blur-[7px]"
               onClick={onClose}
               aria-label="合上这本书"
               tabIndex={-1}
