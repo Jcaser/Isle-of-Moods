@@ -3,11 +3,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { BreathCompanion } from '../components/BreathCompanion'
 import { Icon } from '../components/Icons'
 import { PageHeader } from '../components/PageHeader'
+import { PATTERNS } from '../lib/breathing'
 import { POSTCARDS, POSTCARD_QUOTES } from '../lib/postcards'
 import { ISLAND_VOICES, speakCloud, splitSentences } from '../lib/tts'
 import { useAppStore } from '../store/useAppStore'
 
-type Tab = 'breath' | 'mind' | 'paper'
+type Tab = 'breath' | 'companion' | 'mind' | 'paper'
 
 const SCRIPTS = [
   {
@@ -40,8 +41,61 @@ const SCRIPTS = [
   },
 ]
 
-function BreathingTab() {
-  return <BreathCompanion />
+/** 固定节奏的三种呼吸：选一种直接开始，不需要先描述状态 */
+function BreathingTab({ onCompanion }: { onCompanion: () => void }) {
+  const openBreathing = useAppStore((s) => s.openBreathing)
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-3">
+        {Object.values(PATTERNS).map((p, i) => (
+          <motion.div
+            key={p.id}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.06 }}
+            className="glass flex flex-col p-5"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10.5px] font-medium tracking-wide text-sea-500">
+                {p.hold > 0 ? `${p.inhale}-${p.hold}-${p.exhale}` : `${p.inhale}-${p.exhale}`}
+                {p.holdAfter ? `-${p.holdAfter}` : ''}
+              </span>
+              <Icon name="wave" size={16} className="text-sea-300" />
+            </div>
+            <h3 className="mt-2 font-display text-[16px] font-semibold tracking-tight text-ink-900">{p.name}</h3>
+            <p className="mt-1.5 flex-1 text-[12px] leading-relaxed text-ink-500">{p.desc}</p>
+            <button onClick={() => openBreathing(p.id)} className="btn-primary mt-4 text-[12.5px]">
+              <Icon name="play" size={14} />
+              开始引导
+            </button>
+          </motion.div>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-4xl border border-white/70 bg-white/50 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div>
+          <h3 className="font-display text-[15px] font-semibold text-ink-900">不知道该选哪个？</h3>
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
+            说一句现在什么感觉，岛主会判断状态，替你配好节奏和时长。
+          </p>
+        </div>
+        <button onClick={onCompanion} className="btn-ghost shrink-0 text-[12.5px]">
+          <Icon name="chat" size={14} />
+          让岛主配一组
+          <Icon name="arrowRight" size={14} />
+        </button>
+      </div>
+
+      <div className="rounded-4xl border border-white/70 bg-white/50 p-5 sm:p-6">
+        <h3 className="font-display text-[15px] font-semibold text-ink-900">为什么是「呼气更长」</h3>
+        <p className="mt-2 text-[12.5px] leading-[1.85] text-ink-500">
+          吸气时心率略微加快，呼气时减慢，这种波动由迷走神经调节。把呼气拉长，相当于反复给身体一个「安全」的信号，
+          心率与肌肉张力会随之下降。这也是为什么 4-7-8 常被用于睡前与急性紧张——重点不在数字精确，而在
+          <strong className="font-medium text-ink-700">呼气长于吸气</strong>。屏息让你不适时，直接改成吸 4 呼 6 即可。
+        </p>
+      </div>
+    </div>
+  )
 }
 
 function MindTab() {
@@ -367,8 +421,9 @@ function PostcardTab() {
 export default function Calm() {
   const [tab, setTab] = useState<Tab>('breath')
 
-  const tabs: { id: Tab; label: string; icon: 'wave' | 'volume' | 'sparkles' }[] = [
-    { id: 'breath', label: '呼吸陪伴', icon: 'wave' },
+  const tabs: { id: Tab; label: string; icon: 'wave' | 'chat' | 'volume' | 'sparkles' }[] = [
+    { id: 'breath', label: '呼吸练习', icon: 'wave' },
+    { id: 'companion', label: '岛主陪伴', icon: 'chat' },
     { id: 'mind', label: '正念语音', icon: 'volume' },
     { id: 'paper', label: '明信片', icon: 'sparkles' },
   ]
@@ -379,31 +434,34 @@ export default function Calm() {
         eyebrow="Tidal Therapy"
         icon={<Icon name="wave" size={13} />}
         title="潮汐疗愈"
-        desc="先说一句你现在什么感觉，岛主会配一组节奏，练的时候还能当场改；也可以直接听一段正念引导，或挑一张岛上的明信片。"
+        desc="三种呼吸节奏随手就能开始；如果说不清自己是什么状态，也可以交给岛主判断，让她配一组节奏，练的时候还能当场改。"
       />
 
-      <div className="mb-5 inline-flex rounded-full border border-white/70 bg-white/50 p-1 backdrop-blur">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`relative flex items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] transition ${
-              tab === t.id ? 'text-ink-900' : 'text-ink-500 hover:text-ink-800'
-            }`}
-          >
-            {tab === t.id && (
-              <motion.span layoutId="calm-tab" className="absolute inset-0 rounded-full bg-white shadow-sm" transition={{ type: 'spring', stiffness: 340, damping: 30 }} />
-            )}
-            <span className="relative flex items-center gap-1.5">
-              <Icon name={t.icon} size={14} />
-              {t.label}
-            </span>
-          </button>
-        ))}
+      <div className="mb-5 max-w-full overflow-x-auto">
+        <div className="inline-flex rounded-full border border-white/70 bg-white/50 p-1 backdrop-blur">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`relative flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-[12.5px] transition sm:px-4 ${
+                tab === t.id ? 'text-ink-900' : 'text-ink-500 hover:text-ink-800'
+              }`}
+            >
+              {tab === t.id && (
+                <motion.span layoutId="calm-tab" className="absolute inset-0 rounded-full bg-white shadow-sm" transition={{ type: 'spring', stiffness: 340, damping: 30 }} />
+              )}
+              <span className="relative flex items-center gap-1.5">
+                <Icon name={t.icon} size={14} />
+                {t.label}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="pb-4">
-        {tab === 'breath' && <BreathingTab />}
+        {tab === 'breath' && <BreathingTab onCompanion={() => setTab('companion')} />}
+        {tab === 'companion' && <BreathCompanion />}
         {tab === 'mind' && <MindTab />}
         {tab === 'paper' && <PostcardTab />}
       </div>

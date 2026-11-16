@@ -22,7 +22,7 @@ type Spot = {
   tagline: string
   points: string[]
   meta: string
-  action: 'chat' | 'read' | 'breathe' | 'game' | 'chart' | 'call' | 'about'
+  action: 'chat' | 'read' | 'breathe' | 'game' | 'chart' | 'call'
 }
 
 const SPOTS: Spot[] = [
@@ -1000,12 +1000,6 @@ export function IslandAtlas() {
                 </div>
               )}
 
-              {spot.action === 'about' && (
-                <p className="text-[11.5px] leading-relaxed text-ink-600">
-                  <span className="font-medium text-ink-900">隐私优先　</span>
-                  本地账号、无服务端数据库，每个名字拥有独立命名空间，对话与情绪记录只写入浏览器 localStorage。
-                </p>
-              )}
             </div>
 
             {/* mt-auto：卡片被拉伸到与地图同高时，把主按钮压在底部，中间留白而不是底部塌空 */}

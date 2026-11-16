@@ -19,7 +19,6 @@ const PAGE_NO: Record<string, string> = {
   '/calm': 'V',
   '/play': 'VI',
   '/harbor': 'VII',
-  '/about': 'VIII',
 }
 
 export function PageHeader({ eyebrow, title, desc, icon, right }: Props) {

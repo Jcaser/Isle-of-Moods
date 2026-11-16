@@ -44,6 +44,10 @@ await page.evaluate(() => {
 
 /* ── 潮汐：状态 → 方案 → 练习中改节奏 → 报告 ── */
 await page.goto(`${BASE}/calm`, { waitUntil: 'networkidle' })
+// 潮汐页默认是三种固定节奏；呼吸陪伴在「岛主陪伴」这一栏
+check('潮汐页保留三种固定呼吸', (await page.getByRole('button', { name: '开始引导' }).count()) === 3)
+await page.getByRole('button', { name: '岛主陪伴' }).click()
+await page.waitForTimeout(400)
 check('潮汐页出现呼吸陪伴入口', (await page.getByRole('button', { name: '我现在有点慌，心跳很快' }).count()) > 0)
 
 await page.getByRole('button', { name: '我现在有点慌，心跳很快' }).click()

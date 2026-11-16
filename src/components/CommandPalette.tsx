@@ -44,7 +44,6 @@ export function CommandPalette() {
       { to: '/play', label: '屿乐园', icon: 'sparkles', kw: 'play 游戏 解压 泡泡 水漂 星星' },
       { to: '/mood', label: '情绪潮向', icon: 'chart', kw: 'mood 记录 趋势 打卡' },
       { to: '/harbor', label: '避风港', icon: 'lifebuoy', kw: 'harbor 求助 热线 危机 12356' },
-      { to: '/about', label: '关于与免责声明', icon: 'compass', kw: 'about 说明 团队' },
     ]
     return [
       ...pages.map<Cmd>((p) => ({

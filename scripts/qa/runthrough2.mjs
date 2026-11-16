@@ -21,7 +21,7 @@ await p.evaluate(() => {
 await p.reload({ waitUntil: 'networkidle' })
 await p.waitForTimeout(1200)
 
-for (const r of ['/', '/chat', '/library', '/calm', '/play', '/mood', '/harbor', '/about']) {
+for (const r of ['/', '/chat', '/library', '/calm', '/play', '/mood', '/harbor']) {
   await p.goto(B + r, { waitUntil: 'networkidle' })
   await p.waitForTimeout(600)
   const of = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)

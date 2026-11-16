@@ -290,9 +290,6 @@ function Footer() {
                 {n.label}
               </NavLink>
             ))}
-            <NavLink to="/about" className="transition hover:text-ink-900">
-              关于与免责声明
-            </NavLink>
           </div>
         </div>
 
