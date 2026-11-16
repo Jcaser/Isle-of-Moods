@@ -204,6 +204,119 @@ function serveStatic(req, res, pathname) {
   fs.createReadStream(file).pipe(res)
 }
 
+/* ────────────────────────── MCP 桥接（可选） ──────────────────────────
+ * 浏览器不能直接拉起 stdio 的 MCP Server，所以由这一层做 JSON-RPC 桥接：
+ *   initialize → notifications/initialized → tools/list / tools/call
+ * 支持 Streamable HTTP 传输（JSON 或 SSE 响应都认）。
+ * 没配 MCP_SERVERS 时整段逻辑不启用，接口返回空列表，前端静默跳过。
+ */
+
+const MCP_SERVERS = (env('MCP_SERVERS', '') || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+const MCP_TIMEOUT = 8000
+let rpcId = 1
+let mcpCache = { at: 0, servers: [] }
+
+function mcpName(url, i) {
+  try {
+    const u = new URL(url)
+    return (u.hostname + u.pathname).replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || `mcp-${i}`
+  } catch {
+    return `mcp-${i}`
+  }
+}
+
+async function mcpPost(url, payload, sid) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), MCP_TIMEOUT)
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        ...(sid ? { 'Mcp-Session-Id': sid } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
+    const newSid = res.headers.get('mcp-session-id') || sid
+    const ct = res.headers.get('content-type') || ''
+    let json = null
+    if (ct.includes('text/event-stream')) {
+      const text = await res.text()
+      for (const line of text.split(/\r?\n/)) {
+        if (!line.startsWith('data:')) continue
+        const data = line.slice(5).trim()
+        if (!data) continue
+        try {
+          const j = JSON.parse(data)
+          if (j.id === payload.id) json = j
+        } catch {
+          /* 单帧解析失败忽略 */
+        }
+      }
+    } else {
+      const text = await res.text()
+      json = text ? JSON.parse(text) : null
+    }
+    return { json, sid: newSid, status: res.status }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function mcpHandshake(url, name) {
+  const init = await mcpPost(url, {
+    jsonrpc: '2.0',
+    id: rpcId++,
+    method: 'initialize',
+    params: {
+      protocolVersion: '2024-11-05',
+      capabilities: {},
+      clientInfo: { name: 'serene-isle', version: '1.0.0' },
+    },
+  }).catch((e) => ({ json: { error: { message: e.message } } }))
+
+  if (!init.json || init.json.error) {
+    return { name, url, ok: false, error: init.json?.error?.message ?? 'initialize 失败', tools: [] }
+  }
+  const sid = init.sid
+  await mcpPost(url, { jsonrpc: '2.0', method: 'notifications/initialized' }, sid).catch(() => {})
+  const list = await mcpPost(url, { jsonrpc: '2.0', id: rpcId++, method: 'tools/list', params: {} }, sid).catch((e) => ({
+    json: { error: { message: e.message } },
+  }))
+  if (!list.json || list.json.error) {
+    return { name, url, sid, ok: false, error: list.json?.error?.message ?? 'tools/list 失败', tools: [] }
+  }
+  return { name, url, sid, ok: true, tools: list.json.result?.tools ?? [] }
+}
+
+async function refreshMcp(force = false) {
+  if (!MCP_SERVERS.length) return []
+  if (!force && Date.now() - mcpCache.at < 60_000) return mcpCache.servers
+  const servers = await Promise.all(MCP_SERVERS.map((url, i) => mcpHandshake(url, mcpName(url, i))))
+  mcpCache = { at: Date.now(), servers }
+  const total = servers.reduce((n, s) => n + s.tools.length, 0)
+  console.log(`[mcp] ${servers.length} 个 Server，共 ${total} 个工具`)
+  return servers
+}
+
+/** MCP tools/call 的返回可能是 text / image / resource，这里只取文本，够聊天用 */
+function mcpText(result) {
+  const parts = result?.content ?? []
+  const text = parts
+    .filter((p) => p?.type === 'text')
+    .map((p) => p.text)
+    .join('\n')
+    .trim()
+  return text || (result?.isError ? '工具返回错误' : '（工具没有返回文本内容）')
+}
+
+
+
 /* ────────────────────────── 核心：转发对话请求 ────────────────────────── */
 
 async function handleChat(req, res, ip) {
@@ -380,10 +493,16 @@ const server = http.createServer(async (req, res) => {
       limits: {
         maxOutputTokens: MAX_OUTPUT_TOKENS,
         maxHistoryTurns: 3,
-        maxToolSteps: 2,
+        maxToolSteps: 3,
         knowledgeSnippets: 2,
         thinking: 'disabled',
         ratePerMinute: RATE_LIMIT,
+        multimodal: ['text', 'image'],
+      },
+      mcp: {
+        configured: MCP_SERVERS.length,
+        online: mcpCache.servers.filter((s) => s.ok).length,
+        tools: mcpCache.servers.reduce((n, s) => n + (s.tools?.length ?? 0), 0),
       },
     })
     return
@@ -407,6 +526,58 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (p === '/api/mcp/tools') {
+    const servers = await refreshMcp(url.searchParams.get('refresh') === '1')
+    sendJson(res, 200, {
+      servers: servers.map((s) => ({
+        name: s.name,
+        ok: Boolean(s.ok),
+        error: s.error,
+        tools: (s.tools ?? []).map((t) => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema,
+        })),
+      })),
+      cachedAt: mcpCache.at,
+    })
+    return
+  }
+
+  if (p === '/api/mcp/call' && req.method === 'POST') {
+    let body
+    try {
+      body = JSON.parse(await readBody(req))
+    } catch {
+      sendError(res, 400, 'BadJSON', '请求体不是合法 JSON')
+      return
+    }
+    const server = body?.server
+    const tool = body?.tool
+    if (!server || !tool) {
+      sendJson(res, 400, { ok: false, error: '缺少 server 或 tool' })
+      return
+    }
+    const servers = await refreshMcp()
+    const target = servers.find((s) => s.name === server && s.ok)
+    if (!target) {
+      sendJson(res, 200, { ok: false, error: `未找到可用的 MCP Server：${server}` })
+      return
+    }
+    const r = await mcpPost(
+      target.url,
+      { jsonrpc: '2.0', id: rpcId++, method: 'tools/call', params: { name: tool, arguments: body.arguments ?? {} } },
+      target.sid,
+    ).catch((e) => ({ json: { error: { message: e.message } } }))
+    if (!r.json || r.json.error) {
+      sendJson(res, 200, { ok: false, error: r.json?.error?.message ?? '调用失败' })
+      return
+    }
+    const result = r.json.result
+    sendJson(res, 200, { ok: !result?.isError, text: mcpText(result) })
+    return
+  }
+
   if (p.startsWith('/api/')) {
     sendError(res, 404, 'NotFound', `未知接口 ${p}`)
     return
@@ -419,5 +590,7 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log(`\n  岛主 AI 代理已启动  http://127.0.0.1:${PORT}`)
   console.log(`  模型：${ARK_MODEL}`)
   console.log(`  Key：${ARK_KEY ? '已从环境变量读取（不会下发到浏览器）' : '缺失，将以本地知识模式运行'}`)
-  console.log(`  额度上限：${usage.used} / ${TOKEN_BUDGET} tokens（达到即停）\n`)
+  console.log(`  额度上限：${usage.used} / ${TOKEN_BUDGET} tokens（达到即停）`)
+  console.log(`  MCP：${MCP_SERVERS.length ? `${MCP_SERVERS.length} 个外部 Server（启动后自动握手）` : '未配置（仅用内置工具）'}\n`)
+  if (MCP_SERVERS.length) refreshMcp().catch((e) => console.warn('[mcp] 握手失败：', e.message))
 })

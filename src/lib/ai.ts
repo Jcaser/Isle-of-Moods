@@ -28,7 +28,12 @@ export interface AiStatus {
     maxHistoryTurns: number
     thinking: string
     ratePerMinute: number
+    maxToolSteps?: number
+    /** 支持哪些输入模态，如 ['text', 'image'] */
+    multimodal?: string[]
   }
+  /** 外部 MCP Server 的连接情况 */
+  mcp?: { configured: number; online: number; tools: number }
 }
 
 /** 服务端是否可提供云端推理（已配 Key 且额度没用完） */

@@ -43,13 +43,41 @@ export interface ToolCall {
  * 岛主先把话说完整，用户看到回答后再决定要不要去，点头了才真正打开。
  */
 export interface PendingAction {
-  kind: 'breathing' | 'assessment'
+  kind: 'breathing' | 'assessment' | 'navigate'
   /** 动作标题，如「4-7-8 呼吸引导」 */
   title: string
   /** 一句说明，直接展示在确认条上 */
   hint: string
   /** kind = breathing 时的节奏 */
   pattern?: '478' | 'box' | 'coherent'
+  /** kind = navigate 时的目标路径 */
+  path?: string
+}
+
+/**
+ * 一次回答的「工作流快照」：理解 → 检索 → 工具 → 校验。
+ * 展示给用户看的是结论（走了几步、有没有查到资料），不是内部思维链。
+ */
+export interface AgentPlanSummary {
+  /** 意图 id，如 'anxiety' */
+  intent: string
+  /** 意图的中文标签，如 '焦虑与身体反应' */
+  label: string
+  risk: RiskLevel
+  /** used=命中并注入；skipped=寒暄不检索；empty=检索了但没命中 */
+  retrieval: 'used' | 'skipped' | 'empty'
+  hits: number
+  /** 本次允许的最大工具步数（额度紧张时会下调） */
+  maxSteps: number
+}
+
+/** 输出侧安全检查的结果 */
+export interface GuardSummary {
+  level: 'pass' | 'fixed' | 'blocked'
+  checks: number
+  issues: { id: string; label: string; severity: 'low' | 'medium' | 'high' }[]
+  /** 回答与检索资料的重合度 0-1 */
+  grounded: number
 }
 
 export interface ToolResult {
@@ -92,6 +120,12 @@ export interface ChatMessage {
   action?: PendingAction
   /** 用户对上面那个动作的选择，未设置表示还在等 */
   actionState?: 'done' | 'skipped'
+  /** 这次回答走的工作流（意图 / 检索 / 步数） */
+  plan?: AgentPlanSummary
+  /** 输出安全审查结果 */
+  guard?: GuardSummary
+  /** 用户随消息发来的图片（压缩后的缩略图，仅用于显示） */
+  image?: string
 }
 
 export interface Settings {

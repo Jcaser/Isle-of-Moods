@@ -6,16 +6,19 @@
  * 用同一套检索结果 + 规则化共情模板作答，保证 Demo 与离线演示可用。
  */
 
-import { QUOTA_EXHAUSTED, LlmError, isProxy, streamChat, type ApiMessage, type LLMConfig } from './llm'
+import { QUOTA_EXHAUSTED, LlmError, isProxy, streamChat, type ApiMessage, type LLMConfig, type ToolSchema } from './llm'
 import { TOOL_SCHEMAS, TOOL_LABELS, runTool, type ToolContext } from './tools'
-import { buildContextBlock, retrieve } from './rag'
+import { buildContextBlock, citationTextOf, retrieve } from './rag'
 import { CRISIS_SYSTEM_NOTE, detectRisk } from './crisis'
+import { INTENT_LABEL, classifyIntent, guardOutput } from './guard'
 import { MOOD_META, summarize } from './mood'
 import { LEVEL_META } from './assessment'
 import type {
+  AgentPlanSummary,
   AssessmentRecord,
   ChatMessage,
   Citation,
+  GuardSummary,
   MoodRecord,
   PendingAction,
   RiskLevel,
@@ -30,6 +33,10 @@ export type AgentEvent =
   | { type: 'tool_start'; call: ToolCall; label: string }
   | { type: 'tool_end'; result: ToolResult }
   | { type: 'risk'; level: RiskLevel }
+  /** 工作流第一步：理解 + 检索决策 + 本次工具预算 */
+  | { type: 'plan'; plan: AgentPlanSummary }
+  /** 最后一步：输出安全审查（本地规则，不额外计费） */
+  | { type: 'guard'; guard: GuardSummary }
   | { type: 'error'; message: string }
   | { type: 'quota_exhausted'; message: string }
   /** action：岛主想打开的界面，交给前端在回答之后询问用户，同意才执行 */
@@ -51,15 +58,19 @@ const PERSONA = `你是「岛主」，情绪之屿的驻岛心理咨询师，陪
 用户只是打招呼，就自然开场：「欢迎来到情绪之屿，我是岛主。你可以说说心里积压的感受，我在这里听着。」
 若涉及自伤、自杀、持续严重失眠或无法正常生活，温和引向线下专业帮助并给危机渠道，不深挖创伤。
 
-【工具】在合适时机自然调用，不要把工具名或 JSON 念给用户；每轮最多 2 个，工具返回后用自然语言承接。
+【工具】在合适时机自然调用，不要把工具名或 JSON 念给用户；每轮最多 3 个，工具返回后用自然语言承接。
 - 心慌、手抖、坐不住、睡不着、想放松 → start_breathing
 - 想知道焦虑程度，或症状持续两周以上 → open_anxiety_assessment
 - 要复习安排、时间不够 → create_study_plan
 - 明确说出情绪分数并同意记录 → log_mood
 - 想回顾最近状态 → get_mood_trend
 - 问「为什么」「怎么办」「有什么依据」 → search_knowledge_base
+- 想动手做点什么（去呼吸、去翻书、去求助）→ navigate_to
+工具返回错误或参数不合法时，自己改参数再试一次，或直接改用语言回答，不要向用户抱怨工具。
 
-【资料】下方如有【参考资料】，是分享小屋知识库的摘录，用来保证说法有依据；自然融进回答即可，不要提"编号""出处""第几条"。`
+【图片】用户可能发来一张图（笔记、计划表、课程表、截图）。先用一句话说清你在图里看到的关键信息，再回应他的问题；看不清就说看不清，不要猜。
+
+【资料】下方如有【参考资料】，是分享小屋知识库的摘录，用来保证说法有依据；自然融进回答即可，不要提"编号""出处""第几条"。没有资料时按常识回答，不要编造书名或研究。`
 
 function moodBlock(records: MoodRecord[], assessments: AssessmentRecord[]): string {
   const s = summarize(records, 14)
@@ -126,6 +137,8 @@ function toApiHistory(history: ChatMessage[]): ApiMessage[] {
 
 export interface RunAgentOptions {
   userText: string
+  /** 随消息发来的图片（data URL）：多模态输入，只随本次请求发送，不进历史 */
+  image?: string
   history: ChatMessage[]
   settings: Settings
   records: MoodRecord[]
@@ -134,16 +147,38 @@ export interface RunAgentOptions {
   signal: AbortSignal
   /** 云端是否可用：由服务端健康检查决定，额度用尽时为 false */
   cloud: boolean
+  /** 已用额度比例 0-1：越紧张越保守，少一步工具就少一次整段上下文重发 */
+  quotaRatio?: number
+  /** 外部 MCP 工具，与内置工具合并后交给模型 */
+  extraTools?: ToolSchema[]
   onEvent: (e: AgentEvent) => void
 }
 
-export async function runAgent(opts: RunAgentOptions): Promise<void> {
-  const { userText, history, settings, records, assessments, ctx, signal, cloud, onEvent } = opts
+function guardSummary(g: ReturnType<typeof guardOutput>): GuardSummary {
+  return { level: g.level, checks: g.checks, issues: g.issues, grounded: g.grounded }
+}
 
-  // 检索是纯本地计算（BM25），本身不花任何额度；只有检索片段被塞进 prompt 才计费，
-  // 所以这里只在「真的在聊一个问题」时才检索，寒暄就不查了。
-  const citations = needsKnowledge(userText) ? retrieve(userText, 2) : []
+export async function runAgent(opts: RunAgentOptions): Promise<void> {
+  const { userText, image, history, settings, records, assessments, ctx, signal, cloud, onEvent } = opts
+
+  /* ① 规划（本地规则，零成本）：
+     判断意图、风险等级、要不要查知识库、本次允许多少步工具。
+     这一步决定了后面所有动作的边界，也让前端能画出完整的工作流。 */
+  const intent = classifyIntent(image ? `${userText} （附带图片）` : userText)
   const risk = detectRisk(userText)
+  const wantRetrieval = needsKnowledge(userText) || Boolean(image)
+  const citations = wantRetrieval ? retrieve(userText, 2) : []
+  const ratio = opts.quotaRatio ?? 0
+  const maxSteps = ratio >= 0.85 ? 1 : ratio >= 0.6 ? 2 : 3
+  const plan: AgentPlanSummary = {
+    intent,
+    label: INTENT_LABEL[intent],
+    risk: risk.level,
+    retrieval: !wantRetrieval ? 'skipped' : citations.length ? 'used' : 'empty',
+    hits: citations.length,
+    maxSteps,
+  }
+  onEvent({ type: 'plan', plan })
   onEvent({ type: 'risk', level: risk.level })
 
   const config: LLMConfig = {
@@ -153,14 +188,18 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
     temperature: settings.temperature,
   }
 
+  const citeText = citationTextOf(citations)
+
   // 云端可用 = 服务端代理已就绪（cloud），或用户在设置里自填了 Key 且走直连
   const canUseCloud = cloud || (Boolean(settings.apiKey) && !isProxy(settings.baseUrl))
 
   if (!canUseCloud) {
     onEvent({ type: 'mode', mode: 'local' })
     const text = offlineRespond(userText, citations, risk.level)
-    await typeOut(text, onEvent, signal)
-    onEvent({ type: 'done', content: text, action: localAction(userText) })
+    const g = guardOutput(text, { risk: risk.level, citationText: citeText })
+    await typeOut(g.text, onEvent, signal)
+    onEvent({ type: 'guard', guard: guardSummary(g) })
+    onEvent({ type: 'done', content: g.text, action: localAction(userText) })
     return
   }
 
@@ -172,23 +211,31 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
       content: buildSystem({ citations, records, assessments, riskLevel: risk.level }),
     },
     ...toApiHistory(history),
-    { role: 'user', content: userText },
+    {
+      role: 'user',
+      content: image
+        ? [
+            { type: 'text', text: userText || '（我发了一张图）' },
+            { type: 'image_url', image_url: { url: image } },
+          ]
+        : userText,
+    },
   ]
+
+  const tools: ToolSchema[] = [...TOOL_SCHEMAS, ...(opts.extraTools ?? [])]
 
   let full = ''
   /** 工具只会"提议"界面动作，这里先收集，等回答流完再交给前端去问用户 */
   let pendingAction: PendingAction | undefined
-  // 最多 2 步：每多一步都要把整段上下文重发一次，都是在烧额度
-  const MAX_STEPS = 2
 
   try {
-    for (let step = 0; step < MAX_STEPS; step++) {
+    for (let step = 0; step < maxSteps; step++) {
       if (signal.aborted) return
 
       const res = await streamChat({
         config,
         messages,
-        tools: TOOL_SCHEMAS,
+        tools,
         signal,
         onDelta: (t) => {
           full += t
@@ -230,7 +277,19 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
       full = text
       onEvent({ type: 'delta', text })
     }
-    onEvent({ type: 'done', content: full, action: pendingAction })
+
+    /* ③ 校验：输出侧过一遍安全规则（诊断断言 / 药物剂量 / 工具泄漏 / 危机渠道…），
+       命中就地改写，改写结果与"审了几条"一起回报给界面。 */
+    const guard = guardOutput(full, { risk: risk.level, citationText: citeText })
+    onEvent({ type: 'guard', guard: guardSummary(guard) })
+
+    if (guard.level === 'blocked') {
+      const fallback = offlineRespond(userText, citations, risk.level)
+      onEvent({ type: 'done', content: fallback, action: pendingAction ?? localAction(userText) })
+      return
+    }
+
+    onEvent({ type: 'done', content: guard.text, action: pendingAction })
   } catch (e) {
     if (signal.aborted) return
 
@@ -253,8 +312,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
     onEvent({ type: 'mode', mode: 'local' })
     const fallback = offlineRespond(userText, citations, risk.level)
     if (!full.trim()) {
-      await typeOut(fallback, onEvent, signal)
-      onEvent({ type: 'done', content: fallback, action: pendingAction ?? localAction(userText) })
+      const g = guardOutput(fallback, { risk: risk.level, citationText: citeText })
+      await typeOut(g.text, onEvent, signal)
+      onEvent({ type: 'guard', guard: guardSummary(g) })
+      onEvent({ type: 'done', content: g.text, action: pendingAction ?? localAction(userText) })
     } else {
       onEvent({ type: 'done', content: full, action: pendingAction })
     }

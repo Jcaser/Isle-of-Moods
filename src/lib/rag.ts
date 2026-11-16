@@ -204,9 +204,35 @@ function makeSnippet(text: string, queryTokens: string[]): string {
   return (start > 0 ? '…' : '') + seg + (start + 150 < flat.length ? '…' : '')
 }
 
-/** BM25 检索，返回带出处的引用片段 */
+/** 口语 → 检索式：剥掉疑问词与语气词，留下真正承载语义的词 */
+export function rewriteQuery(query: string): string {
+  return query
+    .replace(/[？?！!。，,、；;：:"'“”‘’]/g, ' ')
+    .replace(/(怎么办呢|怎么办|怎么样|为什么|是不是|可不可以|能不能|我要怎么|我该怎么|你觉得|请问|帮我看看)/g, ' ')
+    .replace(/(我|我们|最近|总是|一直|特别|有点|真的|感觉|觉得|好像|已经|还是|就是)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** 十折交叉打分用的覆盖率：查询里的二元组有多少被这一段接住 */
+function coverage(chunk: Chunk, querySet: string[]): number {
+  const grams = querySet.filter((t) => t.length >= 2)
+  if (!grams.length) return 0
+  let hit = 0
+  for (const g of grams) if (chunk.tf.has(g)) hit++
+  return hit / grams.length
+}
+
+/**
+ * 两阶段检索：
+ *   1) 召回 —— BM25 打分，取前 8 段（宽召回，保证不遗漏）；
+ *   2) 重排 —— 归一化 BM25 × 0.55 + 查询覆盖率 × 0.35 + 标题命中 × 0.10，
+ *      再做「同一篇只留一段」的多样性去重，最后按相对阈值截断。
+ * 返回带出处的引用片段。
+ */
 export function retrieve(query: string, topK = 3): Citation[] {
-  const qTokens = expandQuery(query)
+  const expanded = rewriteQuery(query) || query
+  const qTokens = expandQuery(`${query} ${expanded}`)
   if (!qTokens.length) return []
   const { chunks, df, avgLen } = getIndex()
   const N = chunks.length
@@ -215,7 +241,7 @@ export function retrieve(query: string, topK = 3): Citation[] {
 
   const querySet = [...new Set(qTokens)]
   const q = query.trim()
-  const scored: { c: Chunk; s: number; keys: number; bi: number }[] = []
+  const candidates: { c: Chunk; bm25: number; keys: number; bi: number }[] = []
 
   for (const c of chunks) {
     let score = 0
@@ -238,34 +264,52 @@ export function retrieve(query: string, topK = 3): Citation[] {
     const bi = querySet.filter((t) => t.length >= 2 && c.tf.has(t)).length
     if (!keys && bi < 2 && score < 14) continue
 
-    if (score > 0) scored.push({ c, s: score, keys, bi })
+    if (score > 0) candidates.push({ c, bm25: score, keys, bi })
   }
 
-  scored.sort((a, b2) => b2.s - a.s)
+  if (!candidates.length) return []
+
+  // 阶段一：宽召回
+  candidates.sort((a, b2) => b2.bm25 - a.bm25)
+  const recall = candidates.slice(0, 8)
+  const maxBm25 = recall[0].bm25 || 1
+
+  // 阶段二：交叉重排
+  const reranked = recall
+    .map((item) => {
+      const norm = item.bm25 / maxBm25
+      const cov = coverage(item.c, querySet)
+      const title = Math.min(item.keys, 2) / 2
+      return { ...item, rerank: norm * 0.55 + cov * 0.35 + title * 0.1 }
+    })
+    .sort((a, b2) => b2.rerank - a.rerank)
 
   // 同一篇只留最相关的一段：3 条引用全是同一本书，对用户没有额外信息量
-  const picked: typeof scored = []
+  const picked: typeof reranked = []
   const seen = new Set<string>()
-  for (const item of scored) {
+  for (const item of reranked) {
     if (seen.has(item.c.docId)) continue
     seen.add(item.c.docId)
     picked.push(item)
     if (picked.length >= Math.max(topK, 1)) break
   }
 
-  const top = picked
-  const max = top[0]?.s ?? 1
+  const max = picked[0]?.rerank ?? 1
+  return picked
+    .filter(({ rerank }) => rerank >= max * 0.45)
+    .map(({ c, rerank }) => ({
+      chunkId: c.id,
+      docId: c.docId,
+      title: c.title,
+      category: c.category,
+      snippet: makeSnippet(c.text, querySet.filter((t) => t.length >= 2)),
+      score: Number((rerank / max).toFixed(3)),
+    }))
+}
 
-  return top
-    .filter(({ s }) => s >= max * 0.45)
-    .map(({ c, s }) => ({
-    chunkId: c.id,
-    docId: c.docId,
-    title: c.title,
-    category: c.category,
-    snippet: makeSnippet(c.text, querySet),
-    score: Number((s / max).toFixed(3)),
-  }))
+/** 把引用拼成一段纯文本，用于 groundedness 计算（不展示给用户） */
+export function citationTextOf(citations: Citation[]): string {
+  return citations.map((c) => `${c.title} ${c.snippet}`).join('\n')
 }
 
 /** 知识库页面用的全文匹配（标题 / 标签 / 正文） */

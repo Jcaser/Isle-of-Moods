@@ -1,15 +1,17 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import remarkGfm from 'remark-gfm'
 import { runAgent } from '../lib/agent'
 import { aiExhausted, aiReady, formatTokens } from '../lib/ai'
 import { isProxy } from '../lib/llm'
+import { loadMcpTools, type McpToolMeta } from '../lib/mcp'
 import { summarize } from '../lib/mood'
 import { TOOL_LABELS } from '../lib/tools'
-import type { ChatMessage, PendingAction, RiskLevel, ToolTraceItem } from '../lib/types'
-import { isASRSupported, startRecognition } from '../lib/tts'
+import type { AgentPlanSummary, ChatMessage, GuardSummary, PendingAction, RiskLevel, ToolTraceItem } from '../lib/types'
+import { cancelSpeech, isASRSupported, isTTSSupported, speak, startRecognition } from '../lib/tts'
+import { prepareImage } from '../lib/vision'
 import { useAppStore } from '../store/useAppStore'
 import { Icon } from '../components/Icons'
 import { MoodCheckIn } from '../components/MoodCheckIn'
@@ -26,6 +28,8 @@ interface LiveState {
   trace: ToolTraceItem[]
   risk: RiskLevel
   mode: 'cloud' | 'local'
+  plan?: AgentPlanSummary
+  guard?: GuardSummary
   error?: string
   /** 额度用尽的提示：出现即代表云端调用已被强制停止 */
   quota?: string
@@ -33,10 +37,71 @@ interface LiveState {
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
-/** 只展示「调用了哪个工具」，不展示任何知识库出处 */
-function TraceView({ trace }: { trace: ToolTraceItem[] }) {
+/**
+ * 工作流面板：把这一次回答「怎么想出来的」摊开给用户看 ——
+ * 理解 → 检索 → 工具 → 安全校验。
+ * 展示的是结论与依据（走了几步、查到几段、审了几项），不是内部思维链。
+ */
+function WorkflowView({
+  plan,
+  trace,
+  guard,
+}: {
+  plan?: AgentPlanSummary
+  trace?: ToolTraceItem[]
+  guard?: GuardSummary
+}) {
   const [open, setOpen] = useState(false)
-  if (!trace.length) return null
+  const tools = trace ?? []
+  if (!plan && !tools.length && !guard) return null
+
+  const rows: { key: string; icon: 'compass' | 'book' | 'sparkles' | 'shield'; title: string; detail: string; tone?: 'ok' | 'warn' }[] = []
+
+  if (plan) {
+    rows.push({
+      key: 'plan',
+      icon: 'compass',
+      title: '理解',
+      detail: `${plan.label}${plan.risk === 'high' ? ' · 高危信号' : plan.risk === 'medium' ? ' · 需要留意' : ''}`,
+      tone: plan.risk === 'high' || plan.risk === 'medium' ? 'warn' : 'ok',
+    })
+    rows.push({
+      key: 'retrieval',
+      icon: 'book',
+      title: '检索',
+      detail:
+        plan.retrieval === 'used'
+          ? `知识库命中 ${plan.hits} 段，已作为依据`
+          : plan.retrieval === 'empty'
+            ? '知识库未命中，按常识回答'
+            : '寒暄，跳过检索',
+    })
+  }
+
+  if (tools.length) {
+    rows.push({
+      key: 'tools',
+      icon: 'sparkles',
+      title: '工具',
+      detail: tools.map((t) => t.label).join(' → '),
+      tone: tools.some((t) => t.status === 'error') ? 'warn' : 'ok',
+    })
+  } else if (plan) {
+    rows.push({ key: 'tools', icon: 'sparkles', title: '工具', detail: `未调用（本次最多 ${plan.maxSteps} 步）` })
+  }
+
+  if (guard) {
+    rows.push({
+      key: 'guard',
+      icon: 'shield',
+      title: '校验',
+      detail:
+        guard.level === 'pass'
+          ? `${guard.checks} 项安全检查通过${plan?.retrieval === 'used' ? ` · 参考资料覆盖 ${Math.round(guard.grounded * 100)}%` : ''}`
+          : `已修正：${guard.issues.map((i) => i.label).join('、')}`,
+      tone: guard.level === 'pass' ? 'ok' : 'warn',
+    })
+  }
 
   return (
     <div className="mb-2">
@@ -46,7 +111,8 @@ function TraceView({ trace }: { trace: ToolTraceItem[] }) {
         aria-expanded={open}
       >
         <Icon name="sparkles" size={12} className="text-lav-400" />
-        <span>调用 {trace.length} 个工具</span>
+        <span>工作流 · {rows.length} 步</span>
+        {plan && <span className="text-ink-300">｜{plan.label}</span>}
         <Icon name="arrowRight" size={11} className={`transition ${open ? 'rotate-90' : ''}`} />
       </button>
 
@@ -59,25 +125,31 @@ function TraceView({ trace }: { trace: ToolTraceItem[] }) {
             className="overflow-hidden"
           >
             <div className="mt-2 space-y-1.5 rounded-2xl border border-white/60 bg-white/45 p-3">
-              {trace.map((t) => (
-                <div key={t.id} className="flex items-start gap-2 text-[10.5px] leading-relaxed text-ink-500">
-                  <span
-                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${
-                      t.status === 'done' ? 'bg-sea-100 text-sea-600' : t.status === 'error' ? 'bg-coral-300/30 text-coral-500' : 'bg-lav-100 text-lav-500'
-                    }`}
-                  >
-                    {t.status === 'running' ? (
-                      <span className="h-1.5 w-1.5 animate-ping rounded-full bg-lav-400" />
-                    ) : (
-                      <Icon name={t.status === 'error' ? 'alert' : 'check'} size={9} />
-                    )}
+              {rows.map((r, i) => (
+                <div key={r.key} className="flex items-start gap-2 text-[10.5px] leading-relaxed">
+                  <span className="mt-[1px] flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sea-100 text-sea-600">
+                    <Icon name={r.icon} size={9} />
                   </span>
-                  <span>
-                    <span className="font-medium text-ink-700">{t.label}</span>
-                    {t.summary && <span className="ml-1 text-ink-400">— {t.summary.slice(0, 60)}</span>}
+                  <span className="min-w-0">
+                    <span className="font-medium text-ink-700">
+                      {i + 1}. {r.title}
+                    </span>
+                    <span className={`ml-1 ${r.tone === 'warn' ? 'text-coral-500' : 'text-ink-400'}`}>{r.detail}</span>
                   </span>
                 </div>
               ))}
+              {tools.some((t) => t.summary) && (
+                <div className="mt-1.5 space-y-1 border-t border-white/60 pt-1.5">
+                  {tools
+                    .filter((t) => t.summary)
+                    .map((t) => (
+                      <p key={t.id} className="flex items-baseline gap-1 text-[10px] text-ink-300">
+                        <span className="shrink-0 text-ink-400">{t.label}</span>
+                        <span className="min-w-0 flex-1 truncate">{t.summary}</span>
+                      </p>
+                    ))}
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -131,18 +203,25 @@ export default function Chat() {
   const [live, setLive] = useState<LiveState | null>(null)
   const [listening, setListening] = useState(false)
   const [showMood, setShowMood] = useState(false)
+  const [shot, setShot] = useState<{ payload: string; thumb: string } | null>(null)
+  const [shotError, setShotError] = useState('')
+  const [mcpTools, setMcpTools] = useState<McpToolMeta[]>([])
   const [searchParams] = useSearchParams()
 
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const pendingContent = useRef('')
   const metaRef = useRef<{
     trace: ToolTraceItem[]
     risk: RiskLevel
     quota?: string
     action?: PendingAction
+    plan?: AgentPlanSummary
+    guard?: GuardSummary
+    final?: string
   }>({ trace: [], risk: 'none' })
   const abortedRef = useRef(false)
 
@@ -153,9 +232,10 @@ export default function Chat() {
   const cloudNow = aiReady(aiStatus) || (Boolean(settings.apiKey) && !isProxy(settings.baseUrl))
   const exhausted = aiExhausted(aiStatus)
 
-  // 进页面时问一次服务端：有没有配好 Key、额度还剩多少
+  // 进页面时问一次服务端：有没有配好 Key、额度还剩多少；顺便看看有没有挂外部 MCP 工具
   useEffect(() => {
     void refreshAi()
+    void loadMcpTools().then((r) => setMcpTools(r.tools))
   }, [refreshAi])
 
   // 代理没起来时不做无意义轮询；有状态后每 45 秒刷新一次用量
@@ -186,13 +266,21 @@ export default function Chat() {
   const send = useCallback(
     async (raw?: string) => {
       const text = (raw ?? input).trim()
-      if (!text || streaming) return
+      const image = raw ? null : shot
+      if ((!text && !image) || streaming) return
 
       const history = [...useAppStore.getState().messages]
-      const userMsg: ChatMessage = { id: uid(), role: 'user', content: text, ts: Date.now() }
+      const userMsg: ChatMessage = {
+        id: uid(),
+        role: 'user',
+        content: text,
+        ts: Date.now(),
+        image: image?.thumb,
+      }
       addMessage(userMsg)
       setInput('')
       setShowMood(false)
+      setShot(null)
       if (taRef.current) taRef.current.style.height = 'auto'
 
       // 发之前确认一次服务端状态：是否配好 Key、额度是否还有余
@@ -203,12 +291,13 @@ export default function Chat() {
       const controller = new AbortController()
       abortRef.current = controller
       pendingContent.current = ''
-      metaRef.current = { trace: [], risk: 'none', action: undefined }
+      metaRef.current = { trace: [], risk: 'none', action: undefined, plan: undefined, guard: undefined, final: undefined }
       abortedRef.current = false
       setLive({ content: '', trace: [], risk: 'none', mode: cloud ? 'cloud' : 'local' })
 
       await runAgent({
         userText: text,
+        image: image?.payload,
         history,
         settings,
         records: useAppStore.getState().records,
@@ -220,10 +309,18 @@ export default function Chat() {
         },
         signal: controller.signal,
         cloud,
+        // 额度越紧张，工具步数越少（少一步就少一次整段上下文重发）
+        quotaRatio: status?.quota.ratio ?? 0,
+        extraTools: mcpTools.map((t) => t.schema),
         onEvent: (ev) => {
           if (ev.type === 'risk') metaRef.current.risk = ev.level
+          if (ev.type === 'plan') metaRef.current.plan = ev.plan
+          if (ev.type === 'guard') metaRef.current.guard = ev.guard
           // 必须在 setLive 之外赋值：updater 的执行时机不确定，容易晚于消息落库
-          if (ev.type === 'done' && ev.action) metaRef.current.action = ev.action
+          if (ev.type === 'done') {
+            if (ev.action) metaRef.current.action = ev.action
+            metaRef.current.final = ev.content
+          }
           if (ev.type === 'quota_exhausted') {
             metaRef.current.quota = ev.message
             void refreshAi()
@@ -257,6 +354,10 @@ export default function Chat() {
                 return { ...base, mode: ev.mode }
               case 'risk':
                 return { ...base, risk: ev.level }
+              case 'plan':
+                return { ...base, plan: ev.plan }
+              case 'guard':
+                return { ...base, guard: ev.guard }
               case 'tool_start':
                 return { ...base, trace: metaRef.current.trace }
               case 'tool_end':
@@ -280,7 +381,8 @@ export default function Chat() {
         return
       }
 
-      const final = pendingContent.current.trim()
+      // 用 done 里的最终文本（已经过安全审查改写），而不是流式过程中的原文
+      const final = (metaRef.current.final ?? pendingContent.current).trim()
       if (final) {
         addMessage({
           id: uid(),
@@ -291,6 +393,8 @@ export default function Chat() {
           risk: metaRef.current.risk,
           offline: !cloud,
           action: metaRef.current.action,
+          plan: metaRef.current.plan,
+          guard: metaRef.current.guard,
         })
       }
       // 用完一次就同步一次用量，横幅上的数字才是真的
@@ -299,7 +403,7 @@ export default function Chat() {
       abortRef.current = null
       pendingContent.current = ''
     },
-    [input, streaming, settings, addMessage, openBreathing, addMood, setAssessmentOpen, refreshAi]
+    [input, shot, streaming, settings, mcpTools, addMessage, openBreathing, addMood, setAssessmentOpen, refreshAi],
   )
 
   // 用最新 live 状态补全落库信息
@@ -322,11 +426,27 @@ export default function Chat() {
         risk: metaRef.current.risk,
         offline: !cloudNow,
         action: metaRef.current.action,
+        plan: metaRef.current.plan,
+        guard: metaRef.current.guard,
       })
     }
     setLive(null)
     abortRef.current = null
     pendingContent.current = ''
+  }
+
+  /** 选图：本地压缩后挂在输入框上方，随下一条消息一起发出去 */
+  const pickImage = async (file?: File | null) => {
+    if (!file) return
+    setShotError('')
+    try {
+      const prepared = await prepareImage(file)
+      setShot({ payload: prepared.payload, thumb: prepared.thumb })
+    } catch (e) {
+      setShotError((e as Error).message)
+    } finally {
+      if (fileRef.current) fileRef.current.value = ''
+    }
   }
 
   const toggleMic = () => {
@@ -542,6 +662,31 @@ export default function Chat() {
               </div>
             )}
             <div className="mx-auto w-full max-w-3xl">
+              {(shot || shotError) && (
+                <div className="mb-2 flex items-center gap-2 rounded-2xl border border-white/70 bg-white/70 px-3 py-2">
+                  {shot ? (
+                    <>
+                      <img
+                        src={shot.thumb}
+                        alt="待发送的图片"
+                        className="h-11 w-11 rounded-xl border border-white/80 object-cover"
+                      />
+                      <p className="min-w-0 flex-1 text-[10.5px] leading-relaxed text-ink-400">
+                        已附一张图片 · 岛主会先看图和你说的话
+                      </p>
+                      <button
+                        onClick={() => setShot(null)}
+                        className="btn-quiet h-7 w-7 shrink-0 rounded-full p-0"
+                        aria-label="移除图片"
+                      >
+                        <Icon name="close" size={13} />
+                      </button>
+                    </>
+                  ) : (
+                    <p className="flex-1 text-[10.5px] text-coral-500">{shotError}</p>
+                  )}
+                </div>
+              )}
               <div className="flex items-end gap-2 rounded-3xl border border-white/80 bg-white/80 p-2 shadow-[0_12px_30px_-22px_rgba(46,96,112,0.5)]">
                 <textarea
                   ref={taRef}
@@ -553,11 +698,33 @@ export default function Chat() {
                     el.style.height = `${Math.min(el.scrollHeight, 140)}px`
                   }}
                   onKeyDown={onKeyDown}
+                  onPaste={(e) => {
+                    const file = Array.from(e.clipboardData.files ?? []).find((f) => f.type.startsWith('image/'))
+                    if (file) {
+                      e.preventDefault()
+                      void pickImage(file)
+                    }
+                  }}
                   rows={1}
                   placeholder={listening ? '正在听你说…' : '把此刻的想法写下来，不需要组织语言…'}
                   className="max-h-[140px] min-h-[42px] flex-1 resize-none bg-transparent px-3 py-2.5 text-[14px] leading-relaxed text-ink-900 outline-none placeholder:text-ink-300"
                   aria-label="输入消息"
                 />
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => void pickImage(e.target.files?.[0])}
+                />
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className={`btn-quiet h-10 w-10 shrink-0 rounded-full p-0 ${shot ? 'text-sea-600' : ''}`}
+                  aria-label="发送一张图片"
+                  title="发一张图（笔记、计划表、截图都行）"
+                >
+                  <Icon name="image" size={18} />
+                </button>
                 {isASRSupported() && (
                   <button
                     onClick={toggleMic}
@@ -576,7 +743,7 @@ export default function Chat() {
                 ) : (
                   <button
                     onClick={() => void send()}
-                    disabled={!input.trim()}
+                    disabled={!input.trim() && !shot}
                     className="btn-primary h-10 w-10 shrink-0 rounded-full p-0 disabled:opacity-35"
                     aria-label="发送"
                   >
@@ -595,12 +762,75 @@ export default function Chat() {
   )
 }
 
+/** 朗读一条回答：语音是岛主的第二个出口，不想看字的时候可以听 */
+function SpeakButton({ text }: { text: string }) {
+  const settings = useAppStore((s) => s.settings)
+  const [speaking, setSpeaking] = useState(false)
+  const stopRef = useRef<(() => void) | null>(null)
+
+  useEffect(
+    () => () => {
+      stopRef.current?.()
+    },
+    [],
+  )
+
+  if (!isTTSSupported()) return null
+
+  const toggle = () => {
+    if (speaking) {
+      stopRef.current?.()
+      stopRef.current = null
+      cancelSpeech()
+      setSpeaking(false)
+      return
+    }
+    const plain = text.replace(/[#*`>_~]/g, '')
+    const parts = plain.match(/[^。！？\n]+[。！？]?/g) ?? [plain]
+    stopRef.current = speak(parts.slice(0, 14), {
+      voiceURI: settings.voiceURI,
+      rate: settings.rate,
+      pitch: settings.pitch,
+      onEnd: () => {
+        setSpeaking(false)
+        stopRef.current = null
+      },
+    })
+    setSpeaking(true)
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 transition hover:bg-white/70 ${
+        speaking ? 'text-sea-600' : 'text-ink-300 hover:text-ink-500'
+      }`}
+      aria-label={speaking ? '停止朗读' : '朗读这条回答'}
+      title={speaking ? '停止朗读' : '朗读'}
+    >
+      <Icon name={speaking ? 'stop' : 'speaker'} size={11} />
+      {speaking ? '停止' : '朗读'}
+    </button>
+  )
+}
+
 function MessageRow({ message }: { message: ChatMessage }) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-3xl rounded-br-lg bg-gradient-to-br from-sea-500 to-[#6c9dc4] px-4 py-2.5 text-[13.5px] leading-relaxed text-white shadow-[0_10px_24px_-16px_rgba(58,123,141,0.9)]">
-          {message.content}
+        <div className="flex max-w-[85%] flex-col items-end gap-1.5">
+          {message.image && (
+            <img
+              src={message.image}
+              alt="你发来的图片"
+              className="max-h-52 w-auto rounded-2xl border border-white/80 object-cover shadow-[0_10px_24px_-18px_rgba(46,96,112,0.9)]"
+            />
+          )}
+          {message.content && (
+            <div className="rounded-3xl rounded-br-lg bg-gradient-to-br from-sea-500 to-[#6c9dc4] px-4 py-2.5 text-[13.5px] leading-relaxed text-white shadow-[0_10px_24px_-16px_rgba(58,123,141,0.9)]">
+              {message.content}
+            </div>
+          )}
         </div>
       </div>
     )
@@ -613,7 +843,7 @@ function MessageRow({ message }: { message: ChatMessage }) {
       </span>
       <div className="min-w-0 flex-1">
         {message.risk && <RiskCard level={message.risk} />}
-        {message.trace && message.trace.length > 0 && <TraceView trace={message.trace} />}
+        <WorkflowView plan={message.plan} trace={message.trace} guard={message.guard} />
         <div className="rounded-3xl rounded-tl-lg border border-white/70 bg-white/70 px-4 py-3 shadow-[0_10px_28px_-24px_rgba(46,96,112,0.6)]">
           <div className="md-body">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
@@ -625,6 +855,7 @@ function MessageRow({ message }: { message: ChatMessage }) {
             {new Date(message.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
           </span>
           {message.offline && <span className="chip text-[9px]">本地知识模式</span>}
+          <SpeakButton text={message.content} />
         </div>
       </div>
     </div>
@@ -641,6 +872,7 @@ function ActionPrompt({ message }: { message: ChatMessage }) {
   const openBreathing = useAppStore((s) => s.openBreathing)
   const setAssessmentOpen = useAppStore((s) => s.setAssessmentOpen)
   const patchMessage = useAppStore((s) => s.patchMessage)
+  const navigate = useNavigate()
 
   const action = message.action
   if (!action) return null
@@ -649,7 +881,7 @@ function ActionPrompt({ message }: { message: ChatMessage }) {
     return (
       <p className="mt-2.5 flex items-center gap-1.5 border-t border-white/70 pt-2.5 text-[10.5px] text-ink-300">
         <Icon name="check" size={11} className="text-sea-500" />
-        已为你打开「{action.title}」
+        {action.kind === 'navigate' ? '已带你去' : '已为你打开'}「{action.title}」
       </p>
     )
   }
@@ -663,6 +895,7 @@ function ActionPrompt({ message }: { message: ChatMessage }) {
 
   const run = () => {
     if (action.kind === 'breathing') openBreathing(action.pattern ?? '478')
+    else if (action.kind === 'navigate') navigate(action.path ?? '/calm')
     else setAssessmentOpen(true)
     patchMessage(message.id, { actionState: 'done' })
   }
@@ -671,7 +904,7 @@ function ActionPrompt({ message }: { message: ChatMessage }) {
     <div className="mt-3 rounded-2xl border border-sea-200/70 bg-sea-50/70 px-3.5 py-3">
       <p className="flex items-center gap-1.5 text-[11.5px] font-medium text-ink-800">
         <Icon name="sparkles" size={12} className="text-sea-500" />
-        要我帮你打开「{action.title}」吗？
+        {action.kind === 'navigate' ? `要带你去「${action.title}」吗？` : `要我帮你打开「${action.title}」吗？`}
       </p>
       <p className="mt-1 text-[10.5px] leading-relaxed text-ink-400">{action.hint}</p>
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -701,7 +934,7 @@ function LiveRow({ live, onStop }: { live: LiveState; onStop: () => void }) {
       </span>
       <div className="min-w-0 flex-1">
         {live.risk && <RiskCard level={live.risk} />}
-        {live.trace.length > 0 && <TraceView trace={live.trace} />}
+        <WorkflowView plan={live.plan} trace={live.trace} guard={live.guard} />
         <div className="rounded-3xl rounded-tl-lg border border-white/70 bg-white/70 px-4 py-3 shadow-[0_10px_28px_-24px_rgba(46,96,112,0.6)]">
           {thinking ? (
             <div className="flex items-center gap-2 py-0.5 text-[12.5px] text-ink-400">

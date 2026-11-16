@@ -17,9 +17,13 @@ export interface LLMConfig {
   temperature: number
 }
 
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 export interface ApiMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string | null
+  content: string | null | ContentPart[]
   tool_calls?: {
     id: string
     type: 'function'

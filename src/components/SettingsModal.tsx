@@ -137,8 +137,17 @@ export function SettingsModal() {
                   </div>
                   <p className="mt-2 text-[10px] leading-relaxed text-ink-300">
                     单次最多输出 {aiStatus.limits.maxOutputTokens} tokens，只带最近 {aiStatus.limits.maxHistoryTurns} 轮对话；
-                    深度思考已关闭，避免思考 token 成倍计费。一条消息若调用工具会拆成 2 次请求，两次都要重发上下文，
-                    所以「平均每次」乘以 2 才约等于一条消息的成本。触及上限后会自动停下，不会再产生费用。
+                    深度思考已关闭，避免思考 token 成倍计费。一条消息若调用工具会额外请求一次，两次都要重发上下文，
+                    所以「平均每次」乘以约 2 才是一条消息的成本。触及上限后会自动停下，不会再产生费用。
+                  </p>
+                  <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-ink-400">
+                    <span className="rounded-full bg-white/70 px-2 py-0.5">最多 {aiStatus.limits.maxToolSteps ?? 3} 步工具调用</span>
+                    <span className="rounded-full bg-white/70 px-2 py-0.5">
+                      多模态：{(aiStatus.limits.multimodal ?? ['text']).includes('image') ? '文字 + 图片 + 语音' : '文字'}
+                    </span>
+                    <span className="rounded-full bg-white/70 px-2 py-0.5">
+                      MCP：{aiStatus.mcp?.tools ? `${aiStatus.mcp.online} 个 Server · ${aiStatus.mcp.tools} 个工具` : '未接入外部 Server'}
+                    </span>
                   </p>
                 </>
               )}
