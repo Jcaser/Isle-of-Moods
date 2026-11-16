@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { Icon } from '../components/Icons'
 import { PageHeader } from '../components/PageHeader'
+import { ReliefBlindBox } from '../components/ReliefBlindBox'
 import { SafetyPlan } from '../components/SafetyPlan'
 import { CRISIS_RESOURCES, SAFETY_STEPS } from '../lib/crisis'
 import { useAppStore } from '../store/useAppStore'
@@ -217,15 +217,8 @@ export default function Harbor() {
         </div>
       </section>
 
-      <div className="mt-6 rounded-4xl border border-coral-300/30 bg-coral-300/10 px-5 py-4 text-[12px] leading-relaxed text-ink-700">
-        <strong className="font-semibold">再次提醒：</strong>
-        清绪之屿是自助辅助工具，不能替代心理咨询师与医疗机构的诊断治疗，也不具备紧急救援能力。
-        如果你或身边的人正处于危险中，请立即拨打 <a href="tel:12356" className="font-semibold text-sea-700 underline underline-offset-2">12356</a>、
-        <a href="tel:120" className="font-semibold text-sea-700 underline underline-offset-2">120</a> 或
-        <a href="tel:110" className="font-semibold text-sea-700 underline underline-offset-2">110</a>。
-        <Link to="/about" className="ml-1 text-sea-600 underline underline-offset-2">
-          查看完整声明
-        </Link>
+      <div className="mt-6">
+        <ReliefBlindBox />
       </div>
     </div>
   )

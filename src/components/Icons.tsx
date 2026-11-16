@@ -19,6 +19,7 @@ export type IconName =
   | 'stop'
   | 'check'
   | 'sparkles'
+  | 'gift'
   | 'shield'
   | 'heart'
   | 'clock'
@@ -115,6 +116,14 @@ const PATHS: Record<IconName, JSX.Element> = {
     <>
       <path d="M12 3.5 13.7 9l5.5 1.7-5.5 1.7L12 18l-1.7-5.6L4.8 10.7 10.3 9z" strokeLinejoin="round" />
       <path d="M18.5 16.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" strokeLinejoin="round" opacity=".6" />
+    </>
+  ),
+  gift: (
+    <>
+      <path d="M4.2 11.4h15.6v8.4a1.6 1.6 0 0 1-1.6 1.6H5.8a1.6 1.6 0 0 1-1.6-1.6z" />
+      <path d="M3 7.4h18v4H3z" strokeLinejoin="round" />
+      <path d="M12 7.4v14" />
+      <path d="M12 7.4S10.7 2.6 8.3 2.6a2.4 2.4 0 0 0 0 4.8zM12 7.4s1.3-4.8 3.7-4.8a2.4 2.4 0 0 1 0 4.8z" strokeLinejoin="round" />
     </>
   ),
   shield: (
