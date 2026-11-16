@@ -114,22 +114,23 @@ export function summarize(records: MoodRecord[], days = 7): MoodSummary {
   }
 }
 
-export function insightOf(summary: MoodSummary): string {
-  const { avg, delta, count, streak, topTags, lowDays } = summary
-  if (!count) return '还没有情绪记录。今天可以先选一个最接近当下感受的状态，岛主会据此调整陪伴方式。'
-  if (delta !== null && delta <= -0.5) {
-    return `最近 ${count} 次记录的平均情绪比上一周期低 ${Math.abs(delta).toFixed(1)} 分${
-      topTags.length ? `，主要关联「${topTags[0].tag}」` : ''
-    }。先别急着要求自己更努力——把今天的最小任务缩到 25 分钟，做一次 4-7-8 呼吸，再决定下一步。`
-  }
-  if (delta !== null && delta >= 0.5) {
-    return `比上一周期回升了 ${delta.toFixed(1)} 分，说明你正在找到适合自己的节奏。留意这几天做了什么，把它固定下来。`
-  }
-  if (lowDays >= 3) {
-    return `最近有 ${lowDays} 天处于低 mood 状态。如果这种状态持续超过两周并影响睡眠、食欲或上课，建议预约学校心理中心做一次评估。`
-  }
-  if (streak >= 3) {
-    return `已经连续记录 ${streak} 天。持续记录本身就是一种情绪觉察训练——能命名情绪的人，情绪对行为的控制力通常更弱。`
-  }
-  return `平均情绪 ${avg?.toFixed(1)} 分，整体处于可调节区间。${topTags.length ? `最近较多提到「${topTags[0].tag}」，可以在对话里让岛主陪你拆一拆。` : ''}`
+/** 曲线下方的一行解读：只描述事实，不给建议（建议交给画像区） */
+export function buildPortraitLine(summary: MoodSummary): string {
+  const { avg, delta, count, streak, topTags } = summary
+  if (!count) return '还没有记录。今天可以先选一个最接近当下的状态，画像就从这一笔开始。'
+  const head = `近 ${count} 次记录的平均潮位是 ${avg?.toFixed(1)} 分`
+  const trend =
+    delta === null
+      ? '，还没有可对比的上一周期。'
+      : delta <= -0.5
+        ? `，比上一周期低 ${Math.abs(delta).toFixed(1)} 分。`
+        : delta >= 0.5
+          ? `，比上一周期高 ${delta.toFixed(1)} 分。`
+          : '，和上一周期差不多。'
+  const tail = topTags.length
+    ? `最近比较多提到「${topTags[0].tag}」。`
+    : streak >= 3
+      ? `已经连续记录 ${streak} 天。`
+      : ''
+  return head + trend + tail
 }

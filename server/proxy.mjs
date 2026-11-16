@@ -204,12 +204,22 @@ function serveStatic(req, res, pathname) {
   }
   const rel = decodeURIComponent(pathname).replace(/^\/+/, '')
   let file = path.join(DIST, rel || 'index.html')
-  // 防目录穿越
-  if (!file.startsWith(DIST)) file = path.join(DIST, 'index.html')
-  if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(DIST, 'index.html')
+  try {
+    // 防目录穿越
+    if (!file.startsWith(DIST)) file = path.join(DIST, 'index.html')
+    if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(DIST, 'index.html')
+  } catch {
+    file = path.join(DIST, 'index.html')
+  }
   const ext = path.extname(file).toLowerCase()
   res.writeHead(200, { 'Content-Type': MIME[ext] ?? 'application/octet-stream', 'Cache-Control': 'no-cache' })
-  fs.createReadStream(file).pipe(res)
+  // 构建过程中 dist 会被清空，此时打开的文件可能在读完前就消失（ENOENT）。
+  // 这类错误只影响这一次请求，不能让它冒泡成未捕获异常把整个代理带下去。
+  const stream = fs.createReadStream(file)
+  stream.on('error', () => {
+    if (!res.writableEnded) res.end()
+  })
+  stream.pipe(res)
 }
 
 /* ────────────────────────── MCP 桥接（可选） ──────────────────────────

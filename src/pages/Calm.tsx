@@ -1,8 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { BreathCompanion } from '../components/BreathCompanion'
 import { Icon } from '../components/Icons'
 import { PageHeader } from '../components/PageHeader'
-import { PATTERNS } from '../lib/breathing'
 import { POSTCARDS, POSTCARD_QUOTES } from '../lib/postcards'
 import { ISLAND_VOICES, speakCloud, splitSentences } from '../lib/tts'
 import { useAppStore } from '../store/useAppStore'
@@ -41,45 +41,7 @@ const SCRIPTS = [
 ]
 
 function BreathingTab() {
-  const openBreathing = useAppStore((s) => s.openBreathing)
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-3">
-        {Object.values(PATTERNS).map((p, i) => (
-          <motion.div
-            key={p.id}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.06 }}
-            className="glass flex flex-col p-5"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[10.5px] font-medium tracking-wide text-sea-500">
-                {p.inhale}-{p.hold}-{p.exhale}
-                {p.holdAfter ? `-${p.holdAfter}` : ''}
-              </span>
-              <Icon name="wave" size={16} className="text-sea-300" />
-            </div>
-            <h3 className="mt-2 font-display text-[16px] font-semibold tracking-tight text-ink-900">{p.name}</h3>
-            <p className="mt-1.5 flex-1 text-[12px] leading-relaxed text-ink-500">{p.desc}</p>
-            <button onClick={() => openBreathing(p.id)} className="btn-primary mt-4 text-[12.5px]">
-              <Icon name="play" size={14} />
-              开始引导
-            </button>
-          </motion.div>
-        ))}
-      </div>
-
-      <div className="rounded-4xl border border-white/70 bg-white/50 p-5 sm:p-6">
-        <h3 className="font-display text-[15px] font-semibold text-ink-900">为什么是"呼气更长"</h3>
-        <p className="mt-2 text-[12.5px] leading-[1.85] text-ink-500">
-          吸气时心率略微加快，呼气时减慢，这种波动由迷走神经调节。把呼气拉长，相当于反复给身体一个"安全"的信号，
-          心率与肌肉张力会随之下降。这也是为什么 4-7-8 常被用于睡前与急性紧张——重点不在数字精确，而在
-          <strong className="font-medium text-ink-700">呼气长于吸气</strong>。屏息让你不适时，直接改成吸 4 呼 6 即可。
-        </p>
-      </div>
-    </div>
-  )
+  return <BreathCompanion />
 }
 
 function MindTab() {
@@ -406,7 +368,7 @@ export default function Calm() {
   const [tab, setTab] = useState<Tab>('breath')
 
   const tabs: { id: Tab; label: string; icon: 'wave' | 'volume' | 'sparkles' }[] = [
-    { id: 'breath', label: '潮汐呼吸', icon: 'wave' },
+    { id: 'breath', label: '呼吸陪伴', icon: 'wave' },
     { id: 'mind', label: '正念语音', icon: 'volume' },
     { id: 'paper', label: '明信片', icon: 'sparkles' },
   ]
@@ -417,7 +379,7 @@ export default function Calm() {
         eyebrow="Tidal Therapy"
         icon={<Icon name="wave" size={13} />}
         title="潮汐疗愈"
-        desc="身体先慢下来，想法才有可能松开。这里有三条路径：跟着海浪呼吸、听一段正念引导、或挑一张岛上的明信片。"
+        desc="先说一句你现在什么感觉，岛主会配一组节奏，练的时候还能当场改；也可以直接听一段正念引导，或挑一张岛上的明信片。"
       />
 
       <div className="mb-5 inline-flex rounded-full border border-white/70 bg-white/50 p-1 backdrop-blur">

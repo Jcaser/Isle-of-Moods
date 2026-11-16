@@ -2,13 +2,29 @@ import { create } from 'zustand'
 import { STORAGE_KEYS, clearAll, load, save } from '../lib/storage'
 import { fetchAiStatus, type AiStatus } from '../lib/ai'
 import { DEFAULT_ISLAND_VOICE } from '../lib/tts'
+import type { BreathOutcome, BreathPlan } from '../lib/breath'
 import type {
   AssessmentRecord,
+  BreathingPattern,
   ChatMessage,
   MoodRecord,
   MoodScore,
   Settings,
 } from '../lib/types'
+
+type BreathPatternId = BreathingPattern['id']
+
+/**
+ * 呼吸引导的状态。
+ * plan 为空时走页面里原来的三种固定节奏；带上 plan 时，
+ * 节奏、时长、名字都来自「潮汐陪伴」算出的方案，练完还会回调报告。
+ */
+interface BreathState {
+  open: boolean
+  pattern: BreathPatternId
+  plan: BreathPlan | null
+  onDone: ((outcome: BreathOutcome) => void) | null
+}
 
 /**
  * 默认配置
@@ -46,7 +62,7 @@ interface AppState {
   /** 服务端 AI 状态（是否连上、模型、额度）；null 表示代理没起来 */
   aiStatus: AiStatus | null
   introSeen: boolean
-  breathing: { open: boolean; pattern: '478' | 'box' | 'coherent' }
+  breathing: BreathState
   assessmentOpen: boolean
   settingsOpen: boolean
 
@@ -60,7 +76,9 @@ interface AppState {
   updateSettings: (patch: Partial<Settings>) => void
   refreshAi: () => Promise<AiStatus | null>
   setAiStatus: (s: AiStatus | null) => void
-  openBreathing: (pattern?: '478' | 'box' | 'coherent') => void
+  openBreathing: (pattern?: BreathPatternId) => void
+  /** 用「潮汐陪伴」算出的方案打开引导，练完回调报告 */
+  openBreathPlan: (plan: BreathPlan, onDone: (outcome: BreathOutcome) => void) => void
   closeBreathing: () => void
   setAssessmentOpen: (v: boolean) => void
   setSettingsOpen: (v: boolean) => void
@@ -84,7 +102,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   settings: initialSettings,
   aiStatus: null,
   introSeen: load<boolean>(STORAGE_KEYS.intro, false),
-  breathing: { open: false, pattern: '478' },
+  breathing: { open: false, pattern: '478', plan: null, onDone: null },
   assessmentOpen: false,
   settingsOpen: false,
 
@@ -151,7 +169,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setAiStatus: (s) => set({ aiStatus: s }),
 
-  openBreathing: (pattern = '478') => set({ breathing: { open: true, pattern } }),
+  openBreathing: (pattern = '478') => set({ breathing: { open: true, pattern, plan: null, onDone: null } }),
+  openBreathPlan: (plan, onDone) => set({ breathing: { open: true, pattern: 'coherent', plan, onDone } }),
   closeBreathing: () => set((s) => ({ breathing: { ...s.breathing, open: false } })),
   setAssessmentOpen: (v) => set({ assessmentOpen: v }),
   setSettingsOpen: (v) => set({ settingsOpen: v }),
@@ -172,7 +191,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       messages: load<ChatMessage[]>(STORAGE_KEYS.chat, []),
       settings,
       introSeen: load<boolean>(STORAGE_KEYS.intro, false),
-      breathing: { open: false, pattern: '478' },
+      breathing: { open: false, pattern: '478', plan: null, onDone: null },
       assessmentOpen: false,
       settingsOpen: false,
     })

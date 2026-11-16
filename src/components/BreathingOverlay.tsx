@@ -1,15 +1,29 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  FEEDBACK_META,
+  applyFeedback,
+  cycleSeconds,
+  describeSpec,
+  toPattern,
+  type BreathOutcome,
+  type BreathPlan,
+  type FeedbackKind,
+} from '../lib/breath'
 import { PATTERNS, PHASE_SHORT, PHASE_TIP, buildTimeline, breathLevel, phaseAt } from '../lib/breathing'
+import type { BreathingPattern } from '../lib/types'
 import { useAppStore } from '../store/useAppStore'
 import { Icon } from './Icons'
 import { MoodCheckIn } from './MoodCheckIn'
 
 const DURATIONS = [
   { label: '1 分钟', sec: 60 },
+  { label: '2 分钟', sec: 120 },
   { label: '3 分钟', sec: 180 },
   { label: '5 分钟', sec: 300 },
 ]
+
+const DEFAULT_TARGET: Record<BreathingPattern['id'], number> = { '478': 180, box: 120, coherent: 180 }
 
 const PHASE_COLOR: Record<string, string> = {
   inhale: '#6fb9c7',
@@ -17,6 +31,8 @@ const PHASE_COLOR: Record<string, string> = {
   exhale: '#7fb6a6',
   rest: '#d9c49c',
 }
+
+const FEEDBACK_ORDER: FeedbackKind[] = ['fast', 'behind', 'dizzy', 'steady']
 
 /** 极轻的提示音，全部实时合成 */
 let audioCtx: AudioContext | null = null
@@ -57,6 +73,20 @@ function speak(text: string) {
   }
 }
 
+function buildFromPattern(id: BreathingPattern['id']): BreathPlan {
+  const base = PATTERNS[id]
+  return {
+    key: `${base.inhale}-${base.hold}-${base.exhale}`,
+    name: base.name,
+    state: 'unknown',
+    spec: { inhale: base.inhale, hold: base.hold, exhale: base.exhale, holdAfter: base.holdAfter },
+    target: DEFAULT_TARGET[id],
+    rhythm: base.hold > 0 ? 'even' : 'gentle',
+    focus: PHASE_TIP.inhale,
+    reason: base.desc,
+  }
+}
+
 /** 海面随呼吸涨落：吸气时潮位上升，呼气时退去 */
 function paintTide(ctx: CanvasRenderingContext2D, w: number, h: number, level: number, t: number) {
   ctx.clearRect(0, 0, w, h)
@@ -91,20 +121,19 @@ function paintTide(ctx: CanvasRenderingContext2D, w: number, h: number, level: n
 }
 
 export function BreathingOverlay() {
-  const { open, pattern } = useAppStore((s) => s.breathing)
+  const { open, pattern, plan: incoming, onDone } = useAppStore((s) => s.breathing)
   const close = useAppStore((s) => s.closeBreathing)
   const openBreathing = useAppStore((s) => s.openBreathing)
 
-  const p = PATTERNS[pattern]
-  const timeline = useMemo(() => buildTimeline(p), [p])
-  const cycleLen = useMemo(() => timeline.reduce((s, x) => s + x.duration, 0), [timeline])
-
-  const [target, setTarget] = useState(180)
+  const [live, setLive] = useState<BreathPlan>(() => incoming ?? buildFromPattern(pattern))
+  const [target, setTarget] = useState(() => (incoming ?? buildFromPattern(pattern)).target)
   const [playing, setPlaying] = useState(true)
   const [elapsed, setElapsed] = useState(0)
   const [finished, setFinished] = useState(false)
   const [sound, setSound] = useState(false)
   const [voice, setVoice] = useState(false)
+  const [feedbacks, setFeedbacks] = useState<FeedbackKind[]>([])
+  const [note, setNote] = useState<{ text: string; tone: 'warn' | 'ok'; safety?: string } | null>(null)
 
   const orbRef = useRef<HTMLDivElement>(null)
   const haloRef = useRef<HTMLDivElement>(null)
@@ -113,21 +142,39 @@ export function BreathingOverlay() {
   const rafRef = useRef<number>(0)
   const startRef = useRef<number>(0)
   const baseRef = useRef(0)
-  const levelRef = useRef(0)
+  const offsetRef = useRef(0)
   const lastPhase = useRef<string>('')
+  const liveRef = useRef(live)
+  const fbRef = useRef<FeedbackKind[]>([])
+  const doneRef = useRef(onDone)
 
-  const info = phaseAt(p, elapsed * 1000)
+  liveRef.current = live
+  fbRef.current = feedbacks
+  doneRef.current = onDone
+
+  const patternObj = useMemo(() => toPattern(live), [live])
+  const timeline = useMemo(() => buildTimeline(patternObj), [patternObj])
+  const cycleLen = useMemo(() => cycleSeconds(live.spec), [live.spec])
+
+  // 相位起点：调整节奏后从「吸气」重新开始，避免画面在半口气上跳变
+  const phaseMs = useCallback(() => Math.max(0, (baseRef.current - offsetRef.current) * 1000), [])
+  const info = phaseAt(patternObj, phaseMs())
   const cycleProgress = Math.min(1, elapsed / target)
 
   const reset = useCallback(() => {
+    const next = incoming ?? buildFromPattern(pattern)
+    setLive(next)
+    setTarget(next.target)
     setElapsed(0)
     setFinished(false)
     setPlaying(true)
+    setFeedbacks([])
+    setNote(null)
     baseRef.current = 0
-    levelRef.current = 0
+    offsetRef.current = 0
     startRef.current = performance.now()
     lastPhase.current = ''
-  }, [])
+  }, [incoming, pattern])
 
   useEffect(() => {
     if (!open) return
@@ -160,9 +207,8 @@ export function BreathingOverlay() {
     let lastPaint = 0
 
     const render = (e: number, now: number) => {
-      const cur = phaseAt(p, e * 1000)
+      const cur = phaseAt(patternObj, Math.max(0, e - offsetRef.current) * 1000)
       const level = breathLevel(cur)
-      levelRef.current = level
 
       if (orbRef.current) orbRef.current.style.transform = `scale(${(0.56 + level * 0.5).toFixed(4)})`
       if (haloRef.current) {
@@ -175,7 +221,8 @@ export function BreathingOverlay() {
         arcRef.current.style.stroke = PHASE_COLOR[cur.key] ?? '#6fb9c7'
       }
       if (ctx && cv) {
-        paintTide(ctx, cv.width / (Math.min(2, window.devicePixelRatio || 1)), cv.height / (Math.min(2, window.devicePixelRatio || 1)), level, now / 1000)
+        const dpr = Math.min(2, window.devicePixelRatio || 1)
+        paintTide(ctx, cv.width / dpr, cv.height / dpr, level, now / 1000)
       }
 
       if (cur.key !== lastPhase.current) {
@@ -198,6 +245,19 @@ export function BreathingOverlay() {
         setFinished(true)
         setPlaying(false)
         baseRef.current = target
+        if (doneRef.current) {
+          const plan = liveRef.current
+          const outcome: BreathOutcome = {
+            plan,
+            seconds: target,
+            target,
+            cycles: Math.floor(target / Math.max(1, cycleSeconds(plan.spec))),
+            feedbacks: fbRef.current,
+            endedEarly: false,
+          }
+          doneRef.current(outcome)
+          close()
+        }
         return
       }
       baseRef.current = e
@@ -211,12 +271,28 @@ export function BreathingOverlay() {
 
     rafRef.current = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [open, playing, finished, target, p, sound, voice])
+  }, [open, playing, finished, target, patternObj, sound, voice, close])
+
+  /** 中途退出：已经练够 15 秒就写进报告，不足则当作只是看了看 */
+  const exit = useCallback(() => {
+    if (doneRef.current && !finished && baseRef.current >= 15) {
+      const plan = liveRef.current
+      doneRef.current({
+        plan,
+        seconds: baseRef.current,
+        target,
+        cycles: Math.floor(baseRef.current / Math.max(1, cycleSeconds(plan.spec))),
+        feedbacks: fbRef.current,
+        endedEarly: true,
+      })
+    }
+    close()
+  }, [close, finished, target])
 
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close()
+      if (e.key === 'Escape') exit()
       if (e.code === 'Space') {
         e.preventDefault()
         setPlaying((v) => !v)
@@ -229,10 +305,28 @@ export function BreathingOverlay() {
       document.body.style.overflow = ''
       if ('speechSynthesis' in window) speechSynthesis.cancel()
     }
-  }, [open, close])
+  }, [open, exit])
+
+  /** 实时反馈：连续说「太急」会真的换节奏，不只是安慰 */
+  const react = (kind: FeedbackKind) => {
+    const counts = {
+      fast: feedbacks.filter((f) => f === 'fast').length,
+      behind: feedbacks.filter((f) => f === 'behind').length,
+      dizzy: feedbacks.filter((f) => f === 'dizzy').length,
+    }
+    const res = applyFeedback(live, kind, counts, baseRef.current)
+    setLive(res.plan)
+    setTarget(res.plan.target)
+    setFeedbacks((prev) => [...prev, kind])
+    setNote({ text: res.note, tone: FEEDBACK_META[kind].tone, safety: res.safety })
+    // 新节奏从吸气重新开始
+    offsetRef.current = baseRef.current
+    lastPhase.current = ''
+  }
 
   const cycles = cycleLen ? Math.floor(elapsed / cycleLen) : 0
   const phaseColor = PHASE_COLOR[info.key] ?? '#6fb9c7'
+  const planDriven = Boolean(incoming)
 
   return (
     <AnimatePresence>
@@ -257,7 +351,12 @@ export function BreathingOverlay() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sea-500">Tidal Breathing</p>
-                <h2 className="mt-1 font-display text-lg font-semibold tracking-tight text-ink-900">{p.name}</h2>
+                <h2 className="mt-1 font-display text-lg font-semibold tracking-tight text-ink-900">{live.name}</h2>
+                {planDriven && (
+                  <p className="mt-1 text-[10.5px] text-ink-400">
+                    岛主为你配的节奏 · {describeSpec(live.spec)}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-1.5">
                 <button
@@ -285,27 +384,40 @@ export function BreathingOverlay() {
                 >
                   <Icon name="mic" size={16} />
                 </button>
-                <button onClick={close} className="btn-quiet h-9 w-9 rounded-full p-0" aria-label="退出呼吸练习">
+                <button onClick={exit} className="btn-quiet h-9 w-9 rounded-full p-0" aria-label="退出呼吸练习">
                   <Icon name="close" size={18} />
                 </button>
               </div>
             </div>
 
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {Object.values(PATTERNS).map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => openBreathing(item.id)}
-                  className={`rounded-full border px-3 py-1.5 text-[11.5px] transition ${
-                    item.id === pattern
-                      ? 'border-sea-300 bg-white/85 text-sea-700 shadow-sm'
-                      : 'border-white/60 bg-white/40 text-ink-500 hover:bg-white/70'
-                  }`}
-                >
-                  {item.name}
-                </button>
-              ))}
-            </div>
+            {planDriven ? (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="chip text-[10.5px] text-sea-700">
+                  <Icon name="sparkles" size={11} />
+                  {describeSpec(live.spec)}
+                </span>
+                {incoming?.adapted && <span className="chip text-[10.5px] text-lav-500">已按你的记录调整</span>}
+                {feedbacks.length > 0 && (
+                  <span className="chip text-[10.5px] text-ink-500">中途调整 {feedbacks.length} 次</span>
+                )}
+              </div>
+            ) : (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {Object.values(PATTERNS).map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => openBreathing(item.id)}
+                    className={`rounded-full border px-3 py-1.5 text-[11.5px] transition ${
+                      item.id === pattern
+                        ? 'border-sea-300 bg-white/85 text-sea-700 shadow-sm'
+                        : 'border-white/60 bg-white/40 text-ink-500 hover:bg-white/70'
+                    }`}
+                  >
+                    {item.name}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {!finished ? (
               <>
@@ -324,7 +436,6 @@ export function BreathingOverlay() {
                         strokeLinecap="round"
                         strokeDasharray={`${Math.max(cycleProgress, 0.002) * 590} 590`}
                       />
-                      {/* 当前相位：一圈会被“用掉”的弧 */}
                       <circle
                         ref={arcRef}
                         cx="100"
@@ -338,7 +449,6 @@ export function BreathingOverlay() {
                       />
                     </svg>
 
-                    {/* 光晕：跟随呼吸扩张与收拢 */}
                     <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                       <div
                         ref={haloRef}
@@ -351,7 +461,6 @@ export function BreathingOverlay() {
                       />
                     </div>
 
-                    {/* 球体 */}
                     <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                       <div
                         ref={orbRef}
@@ -375,11 +484,11 @@ export function BreathingOverlay() {
                   </div>
 
                   <p className="mt-5 max-w-sm text-center text-[12.5px] leading-relaxed text-ink-500">
-                    {PHASE_TIP[info.key]}
+                    {live.focus || PHASE_TIP[info.key]}
                   </p>
 
                   {/* 节奏条：吸 → 屏 → 呼 的比例与当前进度一眼可见 */}
-                  <div className="mt-6 w-full max-w-sm">
+                  <div className="mt-5 w-full max-w-sm">
                     <div className="mb-1.5 flex items-center justify-between text-[10px] text-ink-300">
                       <span className="tracking-[0.16em]">这个周期的节奏</span>
                       <span className="tnum">第 {info.cycle} 轮</span>
@@ -415,6 +524,50 @@ export function BreathingOverlay() {
                       })}
                     </div>
                   </div>
+
+                  {/* 实时反馈：说一句，系统就改一处 */}
+                  <div className="mt-5 w-full max-w-sm">
+                    <div className="mb-1.5 flex items-center justify-between text-[10px] text-ink-300">
+                      <span className="tracking-[0.16em]">现在感觉怎么样</span>
+                      <span>说了就调</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {FEEDBACK_ORDER.map((kind) => (
+                        <button
+                          key={kind}
+                          onClick={() => react(kind)}
+                          className={`rounded-full border px-1 py-1.5 text-[11px] transition ${
+                            kind === 'steady'
+                              ? 'border-sea-200/80 bg-sea-50/70 text-sea-700 hover:bg-sea-100'
+                              : 'border-white/70 bg-white/55 text-ink-500 hover:bg-white/85'
+                          }`}
+                        >
+                          {FEEDBACK_META[kind].label}
+                        </button>
+                      ))}
+                    </div>
+                    <AnimatePresence mode="wait">
+                      {note && (
+                        <motion.div
+                          key={note.text}
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0 }}
+                          className="mt-2 rounded-2xl bg-white/70 px-3 py-2"
+                        >
+                          <p className={`text-[11.5px] leading-relaxed ${note.tone === 'warn' ? 'text-sea-700' : 'text-ink-600'}`}>
+                            {note.text}
+                          </p>
+                          {note.safety && (
+                            <p className="mt-1 flex items-start gap-1.5 text-[10.5px] leading-relaxed text-coral-500">
+                              <Icon name="alert" size={11} className="mt-0.5 shrink-0" />
+                              {note.safety}
+                            </p>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
 
                 <div className="mt-1">
@@ -432,7 +585,7 @@ export function BreathingOverlay() {
                     </span>
                   </div>
 
-                  <div className="mt-5 flex items-center justify-center gap-2">
+                  <div className="mt-4 flex items-center justify-center gap-2">
                     <button onClick={() => setPlaying((v) => !v)} className="btn-primary px-6">
                       <Icon name={playing ? 'pause' : 'play'} size={16} />
                       {playing ? '暂停' : '继续'}
@@ -449,7 +602,13 @@ export function BreathingOverlay() {
                         key={d.sec}
                         onClick={() => {
                           setTarget(d.sec)
-                          reset()
+                          setElapsed(0)
+                          setFinished(false)
+                          setPlaying(true)
+                          baseRef.current = 0
+                          offsetRef.current = 0
+                          startRef.current = performance.now()
+                          lastPhase.current = ''
                         }}
                         className={`rounded-full px-3 py-1 text-[11px] transition ${
                           target === d.sec ? 'bg-white/90 text-ink-900 shadow-sm' : 'text-ink-400 hover:text-ink-700'
@@ -475,7 +634,7 @@ export function BreathingOverlay() {
                   {Math.round(target / 60)} 分钟，完成了
                 </h3>
                 <p className="mt-2 max-w-sm text-center text-[13px] leading-relaxed text-ink-500">
-                  {p.name}做完了 {Math.max(cycles, 1)} 个循环。留意一下身体：肩膀有没有松一点，呼吸是不是更深了？
+                  {live.name}做完了 {Math.max(cycles, 1)} 个循环。留意一下身体：肩膀有没有松一点，呼吸是不是更深了？
                 </p>
                 <div className="mt-6 w-full max-w-md">
                   <MoodCheckIn compact onSaved={() => setTimeout(close, 1600)} />
