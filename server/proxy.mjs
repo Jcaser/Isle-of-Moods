@@ -15,6 +15,7 @@ import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { DEFAULT_VOICE, VOICE_PRESETS, synthesizeCached } from './edge-tts.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
@@ -149,6 +150,13 @@ function sendJson(res, status, body) {
 
 function sendError(res, status, code, message) {
   sendJson(res, status, { error: { code, message, type: status === 429 ? 'rate_limit' : 'invalid_request' } })
+}
+
+/** 宽松取值：非法输入退回默认值，避免前端传错就整条链路挂掉 */
+function clampNumber(value, min, max, fallback) {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(max, Math.max(min, n))
 }
 
 function readBody(req) {
@@ -523,6 +531,51 @@ const server = http.createServer(async (req, res) => {
       return
     }
     await handleChat(req, res, ip)
+    return
+  }
+
+  /* ── 岛主之声：神经语音合成（与 Edge「大声朗读」同一套音色）── */
+  if (p === '/api/tts' && req.method === 'POST') {
+    let body
+    try {
+      body = JSON.parse(await readBody(req))
+    } catch {
+      sendError(res, 400, 'BadJSON', '请求体不是合法 JSON')
+      return
+    }
+    const text = String(body?.text ?? '').trim()
+    if (!text) {
+      sendError(res, 400, 'EmptyText', '缺少要朗读的文字')
+      return
+    }
+    if (text.length > 800) {
+      sendError(res, 413, 'TooLong', '单次朗读不超过 800 字')
+      return
+    }
+    const voice = String(body?.voice ?? '')
+    try {
+      const { audio, cached } = await synthesizeCached(text, {
+        voice: VOICE_PRESETS.some((v) => v.id === voice) ? voice : undefined,
+        rate: clampNumber(body?.rate, 0.6, 1.4, 1),
+        pitch: clampNumber(body?.pitch, 0.7, 1.4, 1),
+      })
+      res.writeHead(200, {
+        'Content-Type': 'audio/mpeg',
+        'Content-Length': audio.length,
+        'Cache-Control': 'public, max-age=604800',
+        'X-TTS-Cache': cached ? 'hit' : 'miss',
+        'Access-Control-Allow-Origin': '*',
+      })
+      res.end(audio)
+    } catch (e) {
+      // 合成不可用时明确告知，前端会退回浏览器 TTS
+      sendJson(res, 503, { ok: false, error: String(e?.message ?? e), fallback: 'browser' })
+    }
+    return
+  }
+
+  if (p === '/api/tts/voices') {
+    sendJson(res, 200, { ok: true, default: DEFAULT_VOICE, voices: VOICE_PRESETS })
     return
   }
 

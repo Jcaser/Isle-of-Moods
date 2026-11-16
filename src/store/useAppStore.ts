@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { STORAGE_KEYS, clearAll, load, save } from '../lib/storage'
 import { fetchAiStatus, type AiStatus } from '../lib/ai'
+import { DEFAULT_ISLAND_VOICE } from '../lib/tts'
 import type {
   AssessmentRecord,
   ChatMessage,
@@ -26,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   apiKey: import.meta.env.VITE_LLM_API_KEY || '',
   temperature: 0.7,
   voiceURI: '',
+  islandVoice: DEFAULT_ISLAND_VOICE,
   rate: 0.92,
   pitch: 1,
 }

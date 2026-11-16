@@ -1,6 +1,8 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { RELIEFS, type Relief } from '../lib/relief'
+import { speakCloud } from '../lib/tts'
+import { useAppStore } from '../store/useAppStore'
 import { Icon } from './Icons'
 
 type Phase = 'idle' | 'shaking' | 'open'
@@ -42,21 +44,49 @@ function Bow() {
 
 export function ReliefBlindBox() {
   const reduced = useReducedMotion()
+  const islandVoice = useAppStore((s) => s.settings.islandVoice)
+  const rate = useAppStore((s) => s.settings.rate)
   const [phase, setPhase] = useState<Phase>('idle')
   const [drawn, setDrawn] = useState<Relief | null>(null)
   const [picked, setPicked] = useState<string[]>([])
   const [pulse, setPulse] = useState(0)
+  const [reading, setReading] = useState(false)
 
   const deck = useRef<string[]>([])
   const last = useRef<string | null>(null)
   const timer = useRef<number | null>(null)
+  const readStop = useRef<(() => void) | null>(null)
 
   useEffect(() => () => {
     if (timer.current) window.clearTimeout(timer.current)
+    readStop.current?.()
   }, [])
+
+  /** 抽到的那件小事，可以听岛主念一遍 —— 不想看字的时候也有出口 */
+  const readAloud = () => {
+    if (!drawn) return
+    if (reading) {
+      readStop.current?.()
+      readStop.current = null
+      setReading(false)
+      return
+    }
+    setReading(true)
+    readStop.current = speakCloud([drawn.intro, ...drawn.steps], {
+      voice: islandVoice,
+      rate,
+      onEnd: () => {
+        setReading(false)
+        readStop.current = null
+      },
+    })
+  }
 
   const draw = useCallback(() => {
     if (phase === 'shaking') return
+    readStop.current?.()
+    readStop.current = null
+    setReading(false)
     if (deck.current.length === 0) {
       const ids = shuffle(RELIEFS.map((r) => r.id))
       if (ids.length > 1 && ids[0] === last.current) [ids[0], ids[1]] = [ids[1], ids[0]]
@@ -246,6 +276,14 @@ export function ReliefBlindBox() {
                       </li>
                     ))}
                   </ol>
+                  <button
+                    onClick={readAloud}
+                    className="mt-3 flex items-center gap-1.5 rounded-full border border-sea-200/70 bg-white/70 px-2.5 py-1 text-[11px] text-sea-600 transition hover:bg-white hover:text-sea-700"
+                    aria-label={reading ? '停止朗读这件小事' : '听岛主念一遍'}
+                  >
+                    <Icon name={reading ? 'stop' : 'speaker'} size={12} />
+                    {reading ? '停止' : '听岛主念一遍'}
+                  </button>
                   <div className="mt-3.5 flex items-center justify-between gap-3 border-t border-ink-900/[0.06] pt-3">
                     <p className="text-[10.5px] text-ink-300">
                       {left > 0 ? `还剩 ${left} 件没抽到` : '这一轮抽完了'}

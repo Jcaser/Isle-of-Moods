@@ -133,7 +133,10 @@ export interface Settings {
   model: string
   apiKey: string
   temperature: number
+  /** 浏览器内置音色的 voiceURI，仅在云端语音不可用时作为兜底 */
   voiceURI: string
+  /** 岛主之声（Edge TTS）音色 id，见 lib/tts.ts 的 ISLAND_VOICES */
+  islandVoice: string
   rate: number
   pitch: number
 }

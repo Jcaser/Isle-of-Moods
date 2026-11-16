@@ -10,7 +10,7 @@ import { loadMcpTools, type McpToolMeta } from '../lib/mcp'
 import { summarize } from '../lib/mood'
 import { TOOL_LABELS } from '../lib/tools'
 import type { AgentPlanSummary, ChatMessage, GuardSummary, PendingAction, RiskLevel, ToolTraceItem } from '../lib/types'
-import { cancelSpeech, isASRSupported, isTTSSupported, speak, startRecognition } from '../lib/tts'
+import { cancelSpeech, isASRSupported, speakCloud, startRecognition } from '../lib/tts'
 import { prepareImage } from '../lib/vision'
 import { useAppStore } from '../store/useAppStore'
 import { Icon } from '../components/Icons'
@@ -37,126 +37,6 @@ interface LiveState {
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
-/**
- * 工作流面板：把这一次回答「怎么想出来的」摊开给用户看 ——
- * 理解 → 检索 → 工具 → 安全校验。
- * 展示的是结论与依据（走了几步、查到几段、审了几项），不是内部思维链。
- */
-function WorkflowView({
-  plan,
-  trace,
-  guard,
-}: {
-  plan?: AgentPlanSummary
-  trace?: ToolTraceItem[]
-  guard?: GuardSummary
-}) {
-  const [open, setOpen] = useState(false)
-  const tools = trace ?? []
-  if (!plan && !tools.length && !guard) return null
-
-  const rows: { key: string; icon: 'compass' | 'book' | 'sparkles' | 'shield'; title: string; detail: string; tone?: 'ok' | 'warn' }[] = []
-
-  if (plan) {
-    rows.push({
-      key: 'plan',
-      icon: 'compass',
-      title: '理解',
-      detail: `${plan.label}${plan.risk === 'high' ? ' · 高危信号' : plan.risk === 'medium' ? ' · 需要留意' : ''}`,
-      tone: plan.risk === 'high' || plan.risk === 'medium' ? 'warn' : 'ok',
-    })
-    rows.push({
-      key: 'retrieval',
-      icon: 'book',
-      title: '检索',
-      detail:
-        plan.retrieval === 'used'
-          ? `知识库命中 ${plan.hits} 段，已作为依据`
-          : plan.retrieval === 'empty'
-            ? '知识库未命中，按常识回答'
-            : '寒暄，跳过检索',
-    })
-  }
-
-  if (tools.length) {
-    rows.push({
-      key: 'tools',
-      icon: 'sparkles',
-      title: '工具',
-      detail: tools.map((t) => t.label).join(' → '),
-      tone: tools.some((t) => t.status === 'error') ? 'warn' : 'ok',
-    })
-  } else if (plan) {
-    rows.push({ key: 'tools', icon: 'sparkles', title: '工具', detail: `未调用（本次最多 ${plan.maxSteps} 步）` })
-  }
-
-  if (guard) {
-    rows.push({
-      key: 'guard',
-      icon: 'shield',
-      title: '校验',
-      detail:
-        guard.level === 'pass'
-          ? `${guard.checks} 项安全检查通过${plan?.retrieval === 'used' ? ` · 参考资料覆盖 ${Math.round(guard.grounded * 100)}%` : ''}`
-          : `已修正：${guard.issues.map((i) => i.label).join('、')}`,
-      tone: guard.level === 'pass' ? 'ok' : 'warn',
-    })
-  }
-
-  return (
-    <div className="mb-2">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-full border border-white/70 bg-white/55 px-2.5 py-1 text-[10.5px] text-ink-500 transition hover:bg-white/85"
-        aria-expanded={open}
-      >
-        <Icon name="sparkles" size={12} className="text-lav-400" />
-        <span>工作流 · {rows.length} 步</span>
-        {plan && <span className="text-ink-300">｜{plan.label}</span>}
-        <Icon name="arrowRight" size={11} className={`transition ${open ? 'rotate-90' : ''}`} />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="mt-2 space-y-1.5 rounded-2xl border border-white/60 bg-white/45 p-3">
-              {rows.map((r, i) => (
-                <div key={r.key} className="flex items-start gap-2 text-[10.5px] leading-relaxed">
-                  <span className="mt-[1px] flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sea-100 text-sea-600">
-                    <Icon name={r.icon} size={9} />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="font-medium text-ink-700">
-                      {i + 1}. {r.title}
-                    </span>
-                    <span className={`ml-1 ${r.tone === 'warn' ? 'text-coral-500' : 'text-ink-400'}`}>{r.detail}</span>
-                  </span>
-                </div>
-              ))}
-              {tools.some((t) => t.summary) && (
-                <div className="mt-1.5 space-y-1 border-t border-white/60 pt-1.5">
-                  {tools
-                    .filter((t) => t.summary)
-                    .map((t) => (
-                      <p key={t.id} className="flex items-baseline gap-1 text-[10px] text-ink-300">
-                        <span className="shrink-0 text-ink-400">{t.label}</span>
-                        <span className="min-w-0 flex-1 truncate">{t.summary}</span>
-                      </p>
-                    ))}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
 
 /**
  * 对话里不再向用户展示知识库出处。
@@ -604,6 +484,8 @@ export default function Chat() {
                     我是岛主。你可以在这里说说心里积压的感受，我在这里听着。不用组织语言，也不用说得"合理"。
                   </p>
 
+                  <GreetingVoice />
+
                   <div className="mt-6 grid w-full gap-2 sm:grid-cols-2">
                     {SUGGESTIONS.map((s) => (
                       <button
@@ -762,10 +644,54 @@ export default function Chat() {
   )
 }
 
+/** 岛主的声音名片：几秒钟的问候，先让「岛主」有温度，再开始对话 */
+function GreetingVoice() {
+  const [playing, setPlaying] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  useEffect(
+    () => () => {
+      audioRef.current?.pause()
+    },
+    [],
+  )
+
+  const toggle = () => {
+    if (playing) {
+      audioRef.current?.pause()
+      audioRef.current = null
+      setPlaying(false)
+      return
+    }
+    const el = new Audio('/voice/greeting.mp3')
+    audioRef.current = el
+    const reset = () => {
+      setPlaying(false)
+      audioRef.current = null
+    }
+    el.onended = reset
+    el.onerror = reset
+    setPlaying(true)
+    void el.play().catch(reset)
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      className="mt-3 flex items-center gap-1.5 rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-[11.5px] text-ink-500 transition hover:bg-white hover:text-sea-600"
+      aria-label={playing ? '停止播放岛主问候' : '听岛主的问候'}
+    >
+      <Icon name={playing ? 'stop' : 'speaker'} size={12} />
+      {playing ? '正在播放…' : '听听我的声音'}
+    </button>
+  )
+}
+
 /** 朗读一条回答：语音是岛主的第二个出口，不想看字的时候可以听 */
 function SpeakButton({ text }: { text: string }) {
   const settings = useAppStore((s) => s.settings)
   const [speaking, setSpeaking] = useState(false)
+  const [warming, setWarming] = useState(false)
   const stopRef = useRef<(() => void) | null>(null)
 
   useEffect(
@@ -774,8 +700,6 @@ function SpeakButton({ text }: { text: string }) {
     },
     [],
   )
-
-  if (!isTTSSupported()) return null
 
   const toggle = () => {
     if (speaking) {
@@ -787,12 +711,15 @@ function SpeakButton({ text }: { text: string }) {
     }
     const plain = text.replace(/[#*`>_~]/g, '')
     const parts = plain.match(/[^。！？\n]+[。！？]?/g) ?? [plain]
-    stopRef.current = speak(parts.slice(0, 14), {
-      voiceURI: settings.voiceURI,
+    setWarming(true)
+    stopRef.current = speakCloud(parts.slice(0, 14), {
+      voice: settings.islandVoice,
       rate: settings.rate,
       pitch: settings.pitch,
+      onSentence: () => setWarming(false),
       onEnd: () => {
         setSpeaking(false)
+        setWarming(false)
         stopRef.current = null
       },
     })
@@ -809,7 +736,7 @@ function SpeakButton({ text }: { text: string }) {
       title={speaking ? '停止朗读' : '朗读'}
     >
       <Icon name={speaking ? 'stop' : 'speaker'} size={11} />
-      {speaking ? '停止' : '朗读'}
+      {speaking ? (warming ? '准备中' : '停止') : '朗读'}
     </button>
   )
 }
@@ -843,7 +770,6 @@ function MessageRow({ message }: { message: ChatMessage }) {
       </span>
       <div className="min-w-0 flex-1">
         {message.risk && <RiskCard level={message.risk} />}
-        <WorkflowView plan={message.plan} trace={message.trace} guard={message.guard} />
         <div className="rounded-3xl rounded-tl-lg border border-white/70 bg-white/70 px-4 py-3 shadow-[0_10px_28px_-24px_rgba(46,96,112,0.6)]">
           <div className="md-body">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
@@ -934,7 +860,6 @@ function LiveRow({ live, onStop }: { live: LiveState; onStop: () => void }) {
       </span>
       <div className="min-w-0 flex-1">
         {live.risk && <RiskCard level={live.risk} />}
-        <WorkflowView plan={live.plan} trace={live.trace} guard={live.guard} />
         <div className="rounded-3xl rounded-tl-lg border border-white/70 bg-white/70 px-4 py-3 shadow-[0_10px_28px_-24px_rgba(46,96,112,0.6)]">
           {thinking ? (
             <div className="flex items-center gap-2 py-0.5 text-[12.5px] text-ink-400">

@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "description": "SereneIsle 清绪之屿 — 考试焦虑自助调节平台",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:vite": "vite",

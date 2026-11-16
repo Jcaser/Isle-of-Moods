@@ -16,6 +16,9 @@ dist-ssr
 # 代理的本地用量账本（每次调用后自动写入）
 server/.usage.json
 
+# 岛主之声的合成缓存（同一句话只合成一次）
+server/.tts-cache
+
 # logs
 npm-debug.log*
 yarn-debug.log*

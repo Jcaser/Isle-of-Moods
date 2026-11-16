@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { testConnection } from '../lib/llm'
 import { formatTokens } from '../lib/ai'
 import { estimateUsage, STORAGE_KEYS, drop } from '../lib/storage'
-import { isTTSSupported, listVoices, type VoiceOption } from '../lib/tts'
+import { cancelSpeech, isTTSSupported, ISLAND_VOICES, speakCloud } from '../lib/tts'
 import { useAppStore } from '../store/useAppStore'
 import { Icon } from './Icons'
 import { Modal } from './Modal'
@@ -28,9 +28,10 @@ export function SettingsModal() {
   const clearChat = useAppStore((s) => s.clearChat)
 
   const [test, setTest] = useState<TestState>({ status: 'idle', message: '' })
-  const [voices, setVoices] = useState<VoiceOption[]>([])
   const [confirmWipe, setConfirmWipe] = useState(false)
   const [usage, setUsage] = useState('—')
+  const [previewing, setPreviewing] = useState(false)
+  const previewStop = useRef<(() => void) | null>(null)
 
   // 是否走服务端代理：相对路径即为代理模式
   const viaProxy = settings.baseUrl.trim().startsWith('/')
@@ -38,10 +39,36 @@ export function SettingsModal() {
   useEffect(() => {
     if (!open) return
     setUsage(estimateUsage())
-    listVoices().then(setVoices)
     setTest({ status: 'idle', message: '' })
     void refreshAi()
   }, [open, refreshAi])
+
+  /** 试听：让用户在设置里直接听到当前音色，不用先跑去别的页面 */
+  const previewVoice = () => {
+    if (previewing) {
+      previewStop.current?.()
+      previewStop.current = null
+      setPreviewing(false)
+      return
+    }
+    cancelSpeech()
+    setPreviewing(true)
+    previewStop.current = speakCloud(['你好，我是小屿。今天也可以慢慢来，先把肩膀放下来。'], {
+      voice: settings.islandVoice,
+      rate: settings.rate,
+      onEnd: () => {
+        setPreviewing(false)
+        previewStop.current = null
+      },
+    })
+  }
+
+  useEffect(
+    () => () => {
+      previewStop.current?.()
+    },
+    [],
+  )
 
   const runTest = async () => {
     setTest({ status: 'loading', message: '正在连接…' })
@@ -286,48 +313,53 @@ export function SettingsModal() {
         <div className="hairline" />
 
         <section>
-          <h3 className="text-[13px] font-semibold tracking-wide text-ink-900">语音引导（Web Speech API）</h3>
-          {isTTSSupported() ? (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="label" htmlFor="voice">
-                  音色
-                </label>
-                <select
-                  id="voice"
-                  className="input py-2.5 text-[13px]"
-                  value={settings.voiceURI}
-                  onChange={(e) => update({ voiceURI: e.target.value })}
-                >
-                  <option value="">自动选择中文音色</option>
-                  {voices.map((v) => (
-                    <option key={v.uri} value={v.uri}>
-                      {v.name}（{v.lang}）
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="label mb-0" htmlFor="rate">
-                    语速
-                  </label>
-                  <span className="text-[11px] tabular-nums text-ink-400">{settings.rate.toFixed(2)}×</span>
-                </div>
-                <input
-                  id="rate"
-                  type="range"
-                  min={0.6}
-                  max={1.4}
-                  step={0.02}
-                  value={settings.rate}
-                  onChange={(e) => update({ rate: Number(e.target.value) })}
-                  className="mt-2 w-full accent-sea-500"
-                />
-              </div>
+          <h3 className="text-[13px] font-semibold tracking-wide text-ink-900">岛主之声（神经语音）</h3>
+          <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-500">
+            和 Edge「大声朗读」同一套音色，比系统自带的机械音自然得多。合成由本地代理转发，断网时自动退回系统语音。
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="island-voice">
+                音色
+              </label>
+              <select
+                id="island-voice"
+                className="input py-2.5 text-[13px]"
+                value={settings.islandVoice}
+                onChange={(e) => update({ islandVoice: e.target.value })}
+              >
+                {ISLAND_VOICES.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
             </div>
-          ) : (
-            <p className="mt-2 text-[12px] text-ink-400">当前浏览器不支持语音合成，建议使用 Chrome / Edge。</p>
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="label mb-0" htmlFor="rate">
+                  语速
+                </label>
+                <span className="text-[11px] tabular-nums text-ink-400">{settings.rate.toFixed(2)}×</span>
+              </div>
+              <input
+                id="rate"
+                type="range"
+                min={0.6}
+                max={1.4}
+                step={0.02}
+                value={settings.rate}
+                onChange={(e) => update({ rate: Number(e.target.value) })}
+                className="mt-2 w-full accent-sea-500"
+              />
+            </div>
+          </div>
+          <button onClick={previewVoice} className="btn-ghost mt-3 text-[12.5px]">
+            <Icon name={previewing ? 'stop' : 'speaker'} size={14} />
+            {previewing ? '停止' : '试听'}
+          </button>
+          {!isTTSSupported() && (
+            <p className="mt-2 text-[11px] text-ink-300">当前浏览器不支持系统语音兜底，建议使用 Chrome / Edge。</p>
           )}
         </section>
 

@@ -4,7 +4,7 @@ import { Icon } from '../components/Icons'
 import { PageHeader } from '../components/PageHeader'
 import { PATTERNS } from '../lib/breathing'
 import { POSTCARDS, POSTCARD_QUOTES } from '../lib/postcards'
-import { isTTSSupported, listVoices, speak, splitSentences, type VoiceOption } from '../lib/tts'
+import { ISLAND_VOICES, speakCloud, splitSentences } from '../lib/tts'
 import { useAppStore } from '../store/useAppStore'
 
 type Tab = 'breath' | 'mind' | 'paper'
@@ -83,21 +83,17 @@ function BreathingTab() {
 }
 
 function MindTab() {
-  const voiceURI = useAppStore((s) => s.settings.voiceURI)
+  const islandVoice = useAppStore((s) => s.settings.islandVoice)
   const rate = useAppStore((s) => s.settings.rate)
   const update = useAppStore((s) => s.updateSettings)
   const [activeId, setActiveId] = useState(SCRIPTS[0].id)
   const [current, setCurrent] = useState(-1)
   const [playing, setPlaying] = useState(false)
-  const [voices, setVoices] = useState<VoiceOption[]>([])
+  const [warming, setWarming] = useState(false)
   const stopRef = useRef<(() => void) | null>(null)
 
   const script = SCRIPTS.find((s) => s.id === activeId)!
   const sentences = useMemo(() => splitSentences(script.text), [script])
-
-  useEffect(() => {
-    listVoices().then(setVoices)
-  }, [])
 
   useEffect(() => {
     return () => stopRef.current?.()
@@ -106,12 +102,17 @@ function MindTab() {
   const play = (from = 0) => {
     stopRef.current?.()
     setPlaying(true)
-    stopRef.current = speak(sentences.slice(from), {
-      voiceURI,
+    setWarming(true)
+    stopRef.current = speakCloud(sentences.slice(from), {
+      voice: islandVoice,
       rate,
-      onSentence: (i) => setCurrent(from + i),
+      onSentence: (i) => {
+        setWarming(false)
+        setCurrent(from + i)
+      },
       onEnd: () => {
         setPlaying(false)
+        setWarming(false)
         setCurrent(-1)
       },
     })
@@ -121,6 +122,7 @@ function MindTab() {
     stopRef.current?.()
     stopRef.current = null
     setPlaying(false)
+    setWarming(false)
     setCurrent(-1)
   }
 
@@ -148,7 +150,7 @@ function MindTab() {
           </button>
         ))}
         <p className="px-1 pt-2 text-[10.5px] leading-relaxed text-ink-300">
-          语音由浏览器内置 TTS 实时合成，文字与音频都不离开本机。无中文音色时，请安装系统语音包。
+          语音由岛主之声实时合成，音色与 Edge「大声朗读」同源；断网时自动退回系统语音。
         </p>
       </div>
 
@@ -165,9 +167,9 @@ function MindTab() {
                 停止
               </button>
             ) : (
-              <button onClick={() => play(0)} className="btn-primary px-4 text-[12.5px]" disabled={!isTTSSupported()}>
+              <button onClick={() => play(0)} className="btn-primary px-4 text-[12.5px]">
                 <Icon name="play" size={14} />
-                播放
+                {warming ? '准备中…' : '播放'}
               </button>
             )}
           </div>
@@ -196,15 +198,14 @@ function MindTab() {
           <div className="flex items-center gap-2">
             <Icon name="volume" size={14} className="text-ink-300" />
             <select
-              value={voiceURI}
-              onChange={(e) => update({ voiceURI: e.target.value })}
+              value={islandVoice}
+              onChange={(e) => update({ islandVoice: e.target.value })}
               className="rounded-full border border-white/70 bg-white/70 px-2.5 py-1 text-[11px] text-ink-600 outline-none"
               aria-label="选择音色"
             >
-              <option value="">自动中文音色</option>
-              {voices.map((v) => (
-                <option key={v.uri} value={v.uri}>
-                  {v.name}
+              {ISLAND_VOICES.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
                 </option>
               ))}
             </select>
