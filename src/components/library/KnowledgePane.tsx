@@ -5,7 +5,7 @@ import { Icon } from '../Icons'
 import { BookShelf } from '../BookShelf'
 import { Modal } from '../Modal'
 import { CATEGORIES, KNOWLEDGE_DOCS, type KnowledgeDoc } from '../../lib/knowledge'
-import { KB_STATS, searchDocs } from '../../lib/rag'
+import { searchDocs } from '../../lib/rag'
 
 const CATEGORY_TONE: Record<string, string> = {
   焦虑机制: 'bg-sea-100 text-sea-700',
@@ -34,11 +34,8 @@ export function KnowledgePane({ focusDocId }: { focusDocId?: string | null }) {
   return (
     <div>
       <section className="mb-5 rounded-5xl border border-white/70 bg-gradient-to-b from-white/55 to-white/25 px-3 py-4 backdrop-blur-sm sm:px-5">
-        <div className="mb-1 flex flex-wrap items-center justify-between gap-2 px-1">
+        <div className="mb-1 px-1">
           <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-sea-500">The Shelf</p>
-          <p className="text-[10.5px] text-ink-300">
-            {KB_STATS.docs} 篇条目 · {KB_STATS.chunks} 个检索片段
-          </p>
         </div>
         <BookShelf docs={KNOWLEDGE_DOCS} onOpen={(d) => setActive(d)} />
       </section>
@@ -69,14 +66,6 @@ export function KnowledgePane({ focusDocId }: { focusDocId?: string | null }) {
             </button>
           ))}
         </div>
-      </div>
-
-      <div className="mt-4 flex items-start gap-2 rounded-3xl border border-white/70 bg-white/45 px-4 py-3 text-[11.5px] leading-relaxed text-ink-500">
-        <Icon name="sparkles" size={14} className="mt-0.5 shrink-0 text-lav-400" />
-        <p>
-          检索采用<strong className="font-medium text-ink-700">本地 BM25 + 中文二元组分词 + 同义扩展</strong>
-          ，按段落切块。检索与匹配全部在浏览器内完成，不上传任何内容。
-        </p>
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
