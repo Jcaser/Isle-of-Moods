@@ -73,7 +73,6 @@ export default function Chat() {
   const aiStatus = useAppStore((s) => s.aiStatus)
   const refreshAi = useAppStore((s) => s.refreshAi)
   const records = useAppStore((s) => s.records)
-  const assessments = useAppStore((s) => s.assessments)
   const addMood = useAppStore((s) => s.addMood)
   const openBreathing = useAppStore((s) => s.openBreathing)
   const setAssessmentOpen = useAppStore((s) => s.setAssessmentOpen)

@@ -405,7 +405,6 @@ function GateScene({ svgRef, ripples }: { svgRef: React.RefObject<SVGSVGElement>
 type Step = 'form' | 'confirm'
 
 export function Gate() {
-  const signIn = useAuthStore((s) => s.signIn)
   const signUp = useAuthStore((s) => s.signUp)
   const enter = useAuthStore((s) => s.enter)
   const enterAsGuest = useAuthStore((s) => s.enterAsGuest)

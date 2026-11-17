@@ -364,7 +364,7 @@ const INTENTS: Intent[] = [
   },
   {
     test: /(睡不着|失眠|躺下就清醒|早醒|睡眠)/,
-    build: (c) =>
+    build: () =>
       `考前睡不着，多半不是"身体不需要睡"，而是大脑还停在警戒状态。越盯着"我必须睡着"，越难睡着。
 
 可以试这两步：
@@ -704,7 +704,7 @@ ${close}`
 }
 
 /** 本地知识模式：检索 + 规则意图 + 组合式回应 */
-export function offlineRespond(text: string, citations: Citation[], risk: RiskLevel): string {
+export function offlineRespond(text: string, citations: Citation[], _risk: RiskLevel): string {
   for (let i = 0; i < INTENTS.length; i++) {
     const intent = INTENTS[i]
     if (!intent.test.test(text)) continue

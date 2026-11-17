@@ -92,10 +92,6 @@ const SYNONYMS: Record<string, string[]> = {
   考不上: ['灾难化', '前途'],
 }
 
-function isCJK(ch: string): boolean {
-  return /[\u4e00-\u9fa5]/.test(ch)
-}
-
 export function tokenize(text: string): string[] {
   const tokens: string[] = []
   const lower = text.toLowerCase()

@@ -29,7 +29,7 @@ function makeShells(): Shell[] {
 export function ShellHunt() {
   const sandRef = useRef<HTMLCanvasElement | null>(null)
   const [progress, setProgress] = useState(0)
-  const [found, setFound] = useState(0)
+  const [, setFound] = useState(0)
   const [done, setDone] = useState(false)
   const [note, setNote] = useState(NOTES[0])
   const [shells, setShells] = useState<Shell[]>(makeShells)
