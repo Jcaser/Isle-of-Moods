@@ -129,10 +129,6 @@
         本地可选：火山方舟 doubao-seed-2-1-turbo / DeepSeek / 智谱 / Ollama
 ```
 
-### 为什么密钥不放在前端
-
-`VITE_` 前缀的变量会被打进 JS 产物，任何访问者打开 DevTools 都能看到。因此本项目默认走**服务端代理**：本地运行时密钥只在服务端进程的环境变量里，浏览器只知道"能不能用、还剩多少额度"；托管部署则直接使用 WorkBuddy 云模型，**全程无密钥**。这既满足比赛对密钥存放的硬性要求，也让前端换模型不需要重新打包。
-
 ### AI 链路的五个层次
 
 整条链路是一个**有边界的工作流**，不是"把用户的话转发给模型"：每次回答都会先规划、再决定要不要检索、按需调用工具、最后过一遍安全校验。这条链路的每一步都会写进消息的 `plan` / `trace` / `guard` 字段（「理解 → 检索 → 工具 → 校验」四类事件），既用于本地排障，也方便在开发者工具里复核；界面上不打扰用户，只保留「朗读」这一个出口。
@@ -349,34 +345,6 @@ npm run demo
 - 单端口同时服务页面与 `/api`，浏览器全程接触不到任何密钥；
 - 模型额度由部署平台管理，代码仓库与前端产物中不含任何 Key；
 - 本仓库顶部「在线体验」链接即这种部署方式。
-
-### 一体化部署（Render，备选）
-
-想在自己的云账号里复刻同样的「打开就能用大模型、且不含任何密钥」的公网链接，也可以用 Render 把前端和代理部署成同一个 Node 服务（`render.yaml` 已写好，密钥只填在 Render 后台）：
-
-1. 把本仓库推到 GitHub（本仓库已满足）；
-2. 注册/登录 [render.com](https://render.com) → **New → Blueprint** → 选择本仓库，它会自动读取 `render.yaml`；
-3. 首次创建时网页会提示填环境变量 `ARK_API_KEY` —— **只填在这里，不会写进代码仓库**；
-4. 点 Create，等 build 完成，得到形如 `https://serene-isle.onrender.com` 的公网地址，直接发给评委即可。
-
-要点：
-
-- `render.yaml` 里 `ARK_API_KEY` 标记为 `sync: false`，即 Render 强制要求人工填写，密钥永远不会进 Git；
-- 云平台注入的 `PORT` 优先级最高，`server/proxy.mjs` 在云端自动监听 `0.0.0.0`，本地仍是 `127.0.0.1`，行为不回归；
-- 免费实例 15 分钟无访问会休眠，首次唤醒约需 30 秒——评审开始前先自己打开一次预热；
-- 已内置额度保险丝：`ARK_TOKEN_BUDGET=80000`、`ARK_RATE_LIMIT=12` 次/分钟、单次回复上限 480 tokens，公网被陌生人刷也刷不穿。
-
-### 纯静态托管（无代理层）
-
-| 平台 | 做法 |
-| --- | --- |
-| Vercel | 导入仓库，Framework 选 Vite，已内置 `vercel.json` 的 SPA rewrite |
-| Netlify | Build command `npm run build`，Publish `dist`，已内置 `public/_redirects` |
-| GitHub Pages | 需在 `vite.config.ts` 设置 `base`，并将路由改为 HashRouter；或用 404.html 兜底 |
-| 自有服务器 | Nginx 托管 `dist`，`try_files $uri $uri/ /index.html;` |
-
-> ⚠️ **纯静态托管没有代理层**，`/api` 不存在，页面会退回本地知识模式（功能仍完整可用）。
-> 需要线上也能对话时，优先用上面的 Render 一体化部署，或用 `npm run demo` 在本机单端口演示。
 
 ---
 
