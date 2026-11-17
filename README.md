@@ -310,6 +310,25 @@ npm run demo
 
 > 没有密钥也能跑：应用会自动进入「本地知识模式」，检索 + 规则化共情模板，界面功能完整。
 
+### 依赖清单
+
+`npm install` 会按 `package.json` 装齐，无需全局安装任何工具；版本以 `package.json` / `package-lock.json` 为准。
+
+| 类别 | 依赖 | 用途 |
+| --- | --- | --- |
+| 运行时 | `react` / `react-dom` 18 | 视图层 |
+| 运行时 | `react-router-dom` 6 | 路由（按页懒加载分包） |
+| 运行时 | `zustand` 5 | 单一状态源 + localStorage 持久化 |
+| 运行时 | `framer-motion` 11 | 页面转场、呼吸环形、弹层动效 |
+| 运行时 | `react-markdown` + `remark-gfm` | 岛主回答的 Markdown 渲染 |
+| 运行时 | `clsx` | 条件类名拼装 |
+| 开发 | `vite` 5 + `@vitejs/plugin-react` | 开发服务器与生产构建 |
+| 开发 | `typescript` 5.6 | 全量类型检查（`npm run typecheck`） |
+| 开发 | `tailwindcss` 3 + `postcss` + `autoprefixer` | 设计令牌与工具类 |
+| 开发 | `@types/react` / `@types/react-dom` | 类型声明 |
+
+> 服务端零第三方依赖：`server/proxy.mjs` 只用 Node 内置模块（`http` / `https` / `fs` / 全局 `WebSocket`），因此 Node ≥ 20 是硬性要求，也不需要为语音合成额外装包。
+
 ### 换成别的模型
 
 - **同一代理换模型**：改 `.env.local` 的 `ARK_MODEL`，重启代理即可，前端不用重新打包；
@@ -391,9 +410,9 @@ serene-isle/
 │  ├─ cutout.py              # 图标抠图脚本（容差洪泛 + 最大连通域 + 形态学腐蚀）
 │  └─ mock-llm.mjs           # 本地 OpenAI 兼容 Mock，用于验证流式与工具调用
 ├─ src/
-│  ├─ components/            # Layout / IslandAtlas / MoodHeatmap / BookShelf / SafetyPlan …
+│  ├─ components/            # Layout / IslandAtlas / RingGallery / BreathCompanion / MoodPortrait / NowWizard / ReliefBlindBox …
 │  │  └─ games/              # Bubbles / ShellHunt / Skipping / StarWish（Canvas 小游戏）
-│  ├─ pages/                 # Home / Chat / Library / Calm / Play / Mood / Harbor / About
+│  ├─ pages/                 # Home / Chat / Library / Calm / Play / Mood / Harbor
 │  ├─ lib/                   # agent / llm / tools / rag / breath / breathCoach / breathProfile / portrait / harbor / tts …
 │  ├─ store/useAppStore.ts   # Zustand 单一状态源
 │  ├─ index.css              # 设计令牌与组件层
@@ -466,12 +485,8 @@ serene-isle/
 | 项 | 内容 |
 | --- | --- |
 | 参赛赛道 | AI 健康与生活服务 |
-| 团队成员 | 待补充 |
-| 所在学校 | 待补充 |
-| 指导老师 | 待补充 |
-| 代码仓库 | <https://github.com/Jcaser/Isle-of-Moods> |
-
-> 团队成员、所在学校与指导老师按参赛报名信息填写。
+| 所在学校 | 重庆科技大学 |
+| 参赛队名 | 别的都不对 |
 
 ## License
 
