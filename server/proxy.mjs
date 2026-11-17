@@ -58,7 +58,11 @@ const ARK_BASE = env('ARK_BASE_URL', 'https://ark.cn-beijing.volces.com/api/v3')
 const ARK_MODEL = env('ARK_MODEL', 'doubao-seed-2-1-turbo-260628')
 const TOKEN_BUDGET = Number(env('ARK_TOKEN_BUDGET', '300000')) || 300000
 const MAX_OUTPUT_TOKENS = Number(env('ARK_MAX_OUTPUT_TOKENS', '480')) || 480
-const PORT = Number(env('PROXY_PORT', '8787')) || 8787
+// 云平台注入的 PORT 优先级最高（Render/Railway 会随机分配端口），否则用 .env.local 的 PROXY_PORT
+const PORT = Number(process.env.PORT || env('PROXY_PORT', '8787')) || 8787
+// 云平台（Render / Railway 等）会注入 PORT 并要求监听 0.0.0.0；
+// 本地没有 PORT 时仍旧只绑 127.0.0.1，不把服务暴露到局域网。
+const HOST = env('HOST', process.env.PORT ? '0.0.0.0' : '127.0.0.1')
 const RATE_LIMIT = Number(env('ARK_RATE_LIMIT', '20')) || 20 // 每分钟最大请求数
 const LOCK_MODEL = env('ARK_LOCK_MODEL', '1') !== '0'
 
@@ -649,8 +653,9 @@ const server = http.createServer(async (req, res) => {
   serveStatic(req, res, p)
 })
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`\n  岛主 AI 代理已启动  http://127.0.0.1:${PORT}`)
+server.listen(PORT, HOST, () => {
+  const shown = HOST === '0.0.0.0' ? `0.0.0.0:${PORT}（公网/容器内可达）` : `http://${HOST}:${PORT}`
+  console.log(`\n  岛主 AI 代理已启动  ${shown}`)
   console.log(`  模型：${ARK_MODEL}`)
   console.log(`  Key：${ARK_KEY ? '已从环境变量读取（不会下发到浏览器）' : '缺失，将以本地知识模式运行'}`)
   console.log(`  额度上限：${usage.used} / ${TOKEN_BUDGET} tokens（达到即停）`)

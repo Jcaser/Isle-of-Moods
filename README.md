@@ -333,7 +333,23 @@ npm run demo
 
 ## 部署
 
-纯静态产物（`dist/`），任意静态托管均可：
+### 一体化部署（Render，推荐给评审）
+
+想给评委一个**打开就能用大模型、且不含任何密钥**的公网链接，用 Render 把前端和代理部署成同一个 Node 服务（`render.yaml` 已写好，密钥只填在 Render 后台）：
+
+1. 把本仓库推到 GitHub（本仓库已满足）；
+2. 注册/登录 [render.com](https://render.com) → **New → Blueprint** → 选择本仓库，它会自动读取 `render.yaml`；
+3. 首次创建时网页会提示填环境变量 `ARK_API_KEY` —— **只填在这里，不会写进代码仓库**；
+4. 点 Create，等 build 完成，得到形如 `https://serene-isle.onrender.com` 的公网地址，直接发给评委即可。
+
+要点：
+
+- `render.yaml` 里 `ARK_API_KEY` 标记为 `sync: false`，即 Render 强制要求人工填写，密钥永远不会进 Git；
+- 云平台注入的 `PORT` 优先级最高，`server/proxy.mjs` 在云端自动监听 `0.0.0.0`，本地仍是 `127.0.0.1`，行为不回归；
+- 免费实例 15 分钟无访问会休眠，首次唤醒约需 30 秒——评审开始前先自己打开一次预热；
+- 已内置额度保险丝：`ARK_TOKEN_BUDGET=80000`、`ARK_RATE_LIMIT=12` 次/分钟、单次回复上限 480 tokens，公网被陌生人刷也刷不穿。
+
+### 纯静态托管（无代理层）
 
 | 平台 | 做法 |
 | --- | --- |
@@ -343,7 +359,7 @@ npm run demo
 | 自有服务器 | Nginx 托管 `dist`，`try_files $uri $uri/ /index.html;` |
 
 > ⚠️ **纯静态托管没有代理层**，`/api` 不存在，页面会退回本地知识模式（功能仍完整可用）。
-> 需要线上也能对话时，把 `server/proxy.mjs` 部署到任意支持 Node 的服务，或直接用 `npm run demo` 在本机单端口演示（比赛评审推荐这种方式）。
+> 需要线上也能对话时，优先用上面的 Render 一体化部署，或用 `npm run demo` 在本机单端口演示。
 
 ---
 

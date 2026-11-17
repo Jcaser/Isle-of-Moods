@@ -1,0 +1,27 @@
+# Render 一键部署配置（Blueprint）
+# 用法：Render 控制台 → New → Blueprint → 选这个仓库，它会读取本文件
+# 注意：ARK_API_KEY 标记为 sync: false，意思是「部署时在网页上手动填」，不会写进仓库
+services:
+  - type: web
+    name: serene-isle
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci && npm run build
+    startCommand: node server/proxy.mjs
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: '20'
+      # 必填：在 Render 的 Environment 页面粘贴自己的方舟密钥
+      - key: ARK_API_KEY
+        sync: false
+      - key: ARK_MODEL
+        value: doubao-seed-2-1-turbo-260628
+      # 公网站点建议把额度压低：被陌生人刷也刷不穿
+      - key: ARK_TOKEN_BUDGET
+        value: '80000'
+      - key: ARK_RATE_LIMIT
+        value: '12'
+      - key: ARK_MAX_OUTPUT_TOKENS
+        value: '480'
