@@ -304,16 +304,31 @@ export function BreathCompanion() {
                     {isASRSupported() && (
                       <button
                         onClick={toggleMic}
-                        className={`btn-quiet h-8 w-8 rounded-full p-0 ${listening ? 'bg-coral-300/25 text-coral-500' : ''}`}
-                        aria-label={listening ? '停止语音输入' : '语音输入'}
+                        className={`btn-quiet h-8 w-8 rounded-full p-0 ${listening ? 'bg-coral-500 text-white' : ''}`}
+                        aria-label={listening ? '取消语音输入' : '语音输入'}
                         title="语音输入"
                       >
                         <Icon name="mic" size={15} />
                       </button>
                     )}
-                    <span className="text-[10px] text-ink-300">
-                      {listening ? '正在听…说完再点一次' : `${text.length}/120`}
-                    </span>
+                    {listening ? (
+                      <>
+                        <span className="relative flex h-2.5 w-2.5 shrink-0">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-coral-500 opacity-60" />
+                          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-coral-500" />
+                        </span>
+                        <span className="text-[11px] font-semibold text-coral-500">正在语音输入…</span>
+                        <button
+                          onClick={toggleMic}
+                          className="shrink-0 rounded-full bg-coral-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-coral-400"
+                          aria-label="取消语音输入"
+                        >
+                          取消语音
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-[10px] text-ink-300">{text.length}/120</span>
+                    )}
                   </div>
                   <button
                     onClick={() => void analyze(text)}

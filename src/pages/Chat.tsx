@@ -328,20 +328,32 @@ export default function Chat() {
     }
   }
 
+  const stopRecRef = useRef<(() => void) | null>(null)
+
   const toggleMic = () => {
     if (listening) {
+      // 取消语音：必须真正停掉识别器，只改状态麦克风会一直开着
+      stopRecRef.current?.()
+      stopRecRef.current = null
       setListening(false)
       return
     }
     setListening(true)
-    const stopRec = startRecognition(
+    stopRecRef.current = startRecognition(
       (text, final) => {
         setInput((prev) => (final ? (prev + text).trim() : prev))
-        if (final) setListening(false)
+        if (final) {
+          // 说完一句自动收尾，同样要真正停掉识别器
+          stopRecRef.current?.()
+          stopRecRef.current = null
+          setListening(false)
+        }
       },
-      () => setListening(false),
+      () => {
+        stopRecRef.current = null
+        setListening(false)
+      },
     )
-    ;(window as any).__siStopRec = stopRec
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -568,6 +580,24 @@ export default function Chat() {
                   )}
                 </div>
               )}
+              {listening && (
+                <div className="mb-2 flex items-center gap-2.5 rounded-2xl border border-coral-400/70 bg-coral-300/20 px-3.5 py-2.5">
+                  <span className="relative flex h-3 w-3 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-coral-500 opacity-60" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-coral-500" />
+                  </span>
+                  <span className="flex-1 text-[12.5px] font-semibold text-coral-500">
+                    正在语音输入，说完一句话会自动填进输入框
+                  </span>
+                  <button
+                    onClick={toggleMic}
+                    className="shrink-0 rounded-full bg-coral-500 px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-coral-400"
+                    aria-label="取消语音输入"
+                  >
+                    取消语音
+                  </button>
+                </div>
+              )}
               <div className="flex items-end gap-2 rounded-3xl border border-white/80 bg-white/80 p-2 shadow-[0_12px_30px_-22px_rgba(46,96,112,0.5)]">
                 <textarea
                   ref={taRef}
@@ -609,7 +639,7 @@ export default function Chat() {
                 {isASRSupported() && (
                   <button
                     onClick={toggleMic}
-                    className={`btn-quiet h-10 w-10 shrink-0 rounded-full p-0 ${listening ? 'bg-coral-300/20 text-coral-500' : ''}`}
+                    className={`btn-quiet h-10 w-10 shrink-0 rounded-full p-0 ${listening ? 'bg-coral-500 text-white' : ''}`}
                     aria-label={listening ? '停止语音输入' : '语音输入'}
                     aria-pressed={listening}
                   >
